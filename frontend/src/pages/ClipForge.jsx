@@ -175,7 +175,7 @@ export default function ClipForge() {
 		return () => {
 			cancelled = true;
 		};
-	}, [video]);
+	}, [video?.id, video?.sourceType]);
 
 	function seekYouTube(time) {
 		if (!youtubeRef.current) {

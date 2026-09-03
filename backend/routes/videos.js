@@ -2,6 +2,7 @@ import express from "express";
 import multer from "multer";
 import path from "path";
 import { v4 as uuid } from "uuid";
+import fs from "fs";
 
 import store from "../services/store.js";
 import jobs from "../services/jobs.js";
@@ -108,6 +109,38 @@ router.post("/upload", (request, response) => {
 router.get("/", (request, response) => {
     const videos = store.listVideos();
     response.json(videos.map(publicVideo));
+});
+
+router.get("/:id/status", (request, response) => {
+    const video = store.getVideo(request.params.id);
+
+    if (!video) {
+        return response.status(404).json({
+            error: "Video not found.",
+        });
+    }
+
+    response.json({
+        status: video.status,
+        progress: video.progress ?? 0,
+        error: video.error || null,
+    });
+});
+
+router.get("/:id/file", (request, response) => {
+    const video = store.getVideo(request.params.id);
+
+    if (
+        !video ||
+        !video.filePath ||
+        !fs.existsSync(video.filePath)
+    ) {
+        return response.status(404).json({
+            error: "Video file not found.",
+        });
+    }
+
+    response.sendFile(path.resolve(video.filePath));
 });
 
 router.get("/:id", (request, response) => {

@@ -81,7 +81,6 @@ export default function ClipForge() {
 		const interval = setInterval(async () => {
 			const list = await refresh();
 			const stillBusy = list.some((v) => !TERMINAL.has(v.status));
-
 			if (!stillBusy) {
 				clearInterval(interval);
 			}

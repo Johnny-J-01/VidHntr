@@ -64,13 +64,21 @@ export default function ClipForge() {
 
 		async function refresh() {
 			try {
+				// const list = await api.listVideos();
+
+				// if (!cancelled) {
+				// 	setVideos(list);
+				// }
+
+				// return list;
 				const list = await api.listVideos();
+				const safeList = Array.isArray(list) ? list : [];
 
 				if (!cancelled) {
-					setVideos(list);
+					setVideos(safeList);
 				}
 
-				return list;
+				return safeList;
 			} catch (e) {
 				return [];
 			}
@@ -218,7 +226,8 @@ export default function ClipForge() {
 
 		const list = await api.listVideos();
 
-		setVideos(list);
+		// setVideos(list);
+		setVideos(Array.isArray(list) ? list : []);
 		selectVideo(videoId);
 	}
 

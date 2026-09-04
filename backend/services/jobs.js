@@ -332,23 +332,27 @@ async function runExportJob(exportId) {
             const temporaryId = `${video.id}-export-${exportId}`;
 
             store.patchExport(exportId, {
+                status: "PROCESSING",
                 progress: 8,
             });
 
-            const result = await ytdlp.downloadYouTubeVideo(
-                video.sourceUrl,
-                DIRS.uploads,
-                temporaryId,
-                (progress) => {
-                    store.patchExport(exportId, {
-                        status: "PROCESSING",
-                        progress: Math.min(
-                            30,
-                            8 + Math.round(progress * 0.22)
-                        ),
-                    });
-                }
-            );
+            const result =
+                await ytdlp.downloadYouTubeVideoSection(
+                    video.sourceUrl,
+                    DIRS.uploads,
+                    temporaryId,
+                    exp.start,
+                    exp.end,
+                    (progress) => {
+                        store.patchExport(exportId, {
+                            status: "PROCESSING",
+                            progress: Math.min(
+                                40,
+                                8 + Math.round(progress * 0.32)
+                            ),
+                        });
+                    }
+                );
 
             temporaryVideoPath = result.filePath;
 
@@ -357,11 +361,15 @@ async function runExportJob(exportId) {
                 !fs.existsSync(temporaryVideoPath)
             ) {
                 throw new Error(
-                    "YouTube video download finished but the video file was not found."
+                    "YouTube section download finished but the video file was not found."
                 );
             }
 
             sourcePath = temporaryVideoPath;
+
+            store.patchExport(exportId, {
+                progress: 40,
+            });
         } else {
             throw new Error(
                 "Source video file is not available for export."
@@ -390,8 +398,10 @@ async function runExportJob(exportId) {
         await ffmpegSvc.exportClip({
             sourcePath,
             outputPath,
-            start: exp.start,
-            end: exp.end,
+            start: isYouTube ? 0 : exp.start,
+            end: isYouTube
+                ? exp.end - exp.start
+                : exp.end,
             width: exp.width,
             height: exp.height,
             quality: exp.quality,
@@ -399,7 +409,7 @@ async function runExportJob(exportId) {
             captionsSrtPath,
             onProgress: (progress) => {
                 const mappedProgress = isYouTube
-                    ? 30 + Math.round(progress * 0.7)
+                    ? 40 + Math.round(progress * 0.6)
                     : 10 + Math.round(progress * 0.9);
 
                 store.patchExport(exportId, {

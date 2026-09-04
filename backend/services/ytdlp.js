@@ -6,7 +6,6 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// FFmpeg is stored inside the project.
 const FFMPEG_DIR = path.join(
     __dirname,
     "..",
@@ -133,10 +132,10 @@ function downloadYouTubeAudio(
             stderrBuf += chunk.toString();
         });
 
-        proc.on("error", (err) => {
+        proc.on("error", (error) => {
             reject(
                 new Error(
-                    `yt-dlp failed to start: ${err.message}`
+                    `yt-dlp failed to start: ${error.message}`
                 )
             );
         });
@@ -178,36 +177,19 @@ function downloadYouTubeVideo(
             `${id}.%(ext)s`
         );
 
-        /*
-         * Prefer:
-         *   best MP4 video + best M4A audio
-         *
-         * If unavailable:
-         *   best combined MP4
-         *
-         * Final fallback:
-         *   best available format
-         */
         const args = [
             url,
-
             "-f",
             "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/b",
-
             "--merge-output-format",
             "mp4",
-
             "--ffmpeg-location",
             FFMPEG_DIR,
-
             "-o",
             outputTemplate,
-
             "--no-playlist",
-
             "--print",
             "after_move:filepath",
-
             "--newline",
         ];
 
@@ -217,7 +199,6 @@ function downloadYouTubeVideo(
             { windowsHide: true }
         );
 
-        let title = null;
         let resolvedPath = null;
         let stderrBuf = "";
 
@@ -239,14 +220,6 @@ function downloadYouTubeVideo(
                 );
             }
 
-            const titleMatch = text.match(
-                /\[download\]\s+Destination:\s*(.+)/
-            );
-
-            if (titleMatch) {
-                resolvedPath = titleMatch[1].trim();
-            }
-
             const lines = text
                 .split(/\r?\n/)
                 .map((line) => line.trim())
@@ -266,10 +239,10 @@ function downloadYouTubeVideo(
             stderrBuf += chunk.toString();
         });
 
-        proc.on("error", (err) => {
+        proc.on("error", (error) => {
             reject(
                 new Error(
-                    `yt-dlp failed to start: ${err.message}`
+                    `yt-dlp failed to start: ${error.message}`
                 )
             );
         });
@@ -292,7 +265,132 @@ function downloadYouTubeVideo(
                 filePath:
                     resolvedPath ||
                     path.join(outputDir, `${id}.mp4`),
-                title,
+            });
+        });
+    });
+}
+
+function downloadYouTubeVideoSection(
+    url,
+    outputDir,
+    id,
+    start,
+    end,
+    onProgress
+) {
+    return new Promise((resolve, reject) => {
+        fs.mkdirSync(outputDir, { recursive: true });
+
+        const sectionStart = Math.max(0, Number(start) || 0);
+        const sectionEnd = Number(end);
+
+        if (
+            !Number.isFinite(sectionEnd) ||
+            sectionEnd <= sectionStart
+        ) {
+            reject(
+                new Error("Invalid YouTube export section.")
+            );
+            return;
+        }
+
+        const outputTemplate = path.join(
+            outputDir,
+            `${id}.%(ext)s`
+        );
+
+        const section = `*${sectionStart}-${sectionEnd}`;
+
+        const args = [
+            url,
+            "-f",
+            "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/b",
+            "--download-sections",
+            section,
+            "--merge-output-format",
+            "mp4",
+            "--ffmpeg-location",
+            FFMPEG_DIR,
+            "-o",
+            outputTemplate,
+            "--no-playlist",
+            "--print",
+            "after_move:filepath",
+            "--newline",
+        ];
+
+        const proc = spawn(
+            resolveYtDlpPath(),
+            args,
+            { windowsHide: true }
+        );
+
+        let resolvedPath = null;
+        let stderrBuf = "";
+
+        proc.stdout.on("data", (chunk) => {
+            const text = chunk.toString();
+
+            const progressMatch = text.match(
+                /\[download\]\s+(\d{1,3}(?:\.\d+)?)%/
+            );
+
+            if (progressMatch && onProgress) {
+                onProgress(
+                    Math.min(
+                        99,
+                        Math.round(
+                            parseFloat(progressMatch[1])
+                        )
+                    )
+                );
+            }
+
+            const lines = text
+                .split(/\r?\n/)
+                .map((line) => line.trim())
+                .filter(Boolean);
+
+            for (const line of lines) {
+                if (
+                    line.toLowerCase().endsWith(".mp4") &&
+                    !line.startsWith("[")
+                ) {
+                    resolvedPath = line;
+                }
+            }
+        });
+
+        proc.stderr.on("data", (chunk) => {
+            stderrBuf += chunk.toString();
+        });
+
+        proc.on("error", (error) => {
+            reject(
+                new Error(
+                    `yt-dlp failed to start: ${error.message}`
+                )
+            );
+        });
+
+        proc.on("close", (code) => {
+            if (code !== 0) {
+                reject(
+                    new Error(
+                        `YouTube section download failed.\n${stderrBuf}`
+                    )
+                );
+                return;
+            }
+
+            if (onProgress) {
+                onProgress(100);
+            }
+
+            resolve({
+                filePath:
+                    resolvedPath ||
+                    path.join(outputDir, `${id}.mp4`),
             });
         });
     });
@@ -338,8 +436,8 @@ function fetchMetadata(url) {
             stderr += chunk.toString();
         });
 
-        proc.on("error", (err) => {
-            reject(err);
+        proc.on("error", (error) => {
+            reject(error);
         });
 
         proc.on("close", (code) => {
@@ -354,10 +452,10 @@ function fetchMetadata(url) {
 
             try {
                 resolve(JSON.parse(stdout));
-            } catch (err) {
+            } catch (error) {
                 reject(
                     new Error(
-                        `Could not parse YouTube metadata: ${err.message}`
+                        `Could not parse YouTube metadata: ${error.message}`
                     )
                 );
             }
@@ -369,6 +467,7 @@ export {
     isValidYouTubeUrl,
     downloadYouTubeAudio,
     downloadYouTubeVideo,
+    downloadYouTubeVideoSection,
     downloadYouTube,
     fetchMetadata,
 };
@@ -377,6 +476,7 @@ export default {
     isValidYouTubeUrl,
     downloadYouTubeAudio,
     downloadYouTubeVideo,
+    downloadYouTubeVideoSection,
     downloadYouTube,
     fetchMetadata,
 };

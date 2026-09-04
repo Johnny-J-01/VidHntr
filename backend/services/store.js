@@ -16,14 +16,25 @@ function ensureDb() {
     if (!fs.existsSync(DB_FILE)) {
         fs.writeFileSync(
             DB_FILE,
-            JSON.stringify({ videos: {}, exports: {}, }, null, 2)
+            JSON.stringify(
+                {
+                    videos: {},
+                    exports: {},
+                },
+                null,
+                2
+            )
         );
     }
 }
 
 function readDb() {
     ensureDb();
-    const raw = fs.readFileSync(DB_FILE, "utf-8");
+
+    const raw = fs.readFileSync(
+        DB_FILE,
+        "utf-8"
+    );
 
     try {
         return JSON.parse(raw);
@@ -85,9 +96,55 @@ function patchVideo(id, patch) {
     return db.videos[id];
 }
 
+function upsertExport(exportJob) {
+    const db = readDb();
+
+    db.exports[exportJob.id] = exportJob;
+
+    writeDb(db);
+
+    return exportJob;
+}
+
+function getExport(id) {
+    const db = readDb();
+
+    return db.exports[id] || null;
+}
+
+function patchExport(id, patch) {
+    const db = readDb();
+
+    if (!db.exports[id]) {
+        return null;
+    }
+
+    db.exports[id] = {
+        ...db.exports[id],
+        ...patch,
+    };
+
+    writeDb(db);
+
+    return db.exports[id];
+}
+
+export {
+    upsertVideo,
+    getVideo,
+    listVideos,
+    patchVideo,
+    upsertExport,
+    getExport,
+    patchExport,
+};
+
 export default {
     upsertVideo,
     getVideo,
     listVideos,
     patchVideo,
+    upsertExport,
+    getExport,
+    patchExport,
 };

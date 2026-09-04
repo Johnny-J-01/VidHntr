@@ -51,8 +51,6 @@ export default function AppShell({ top, left, center, right }) {
 			const resize = resizeRef.current;
 
 			if (!resize || !containerRef.current) return;
-
-			// Never resize panels on smaller screens.
 			if (screenSize !== "desktop") return;
 
 			const rect = containerRef.current.getBoundingClientRect();
@@ -97,7 +95,6 @@ export default function AppShell({ top, left, center, right }) {
 	}, [leftWidth, rightWidth, screenSize]);
 
 	function startResize(type) {
-		// Resizing is desktop-only.
 		if (screenSize !== "desktop") return;
 
 		resizeRef.current = { type };
@@ -109,17 +106,14 @@ export default function AppShell({ top, left, center, right }) {
 	const isMobile = screenSize === "mobile";
 	const isTablet = screenSize === "tablet";
 	const isTabletLandscape = screenSize === "tabletLandscape";
-	const isDesktop = screenSize === "desktop";
 
 	if (isMobile) {
 		return (
 			<div className="h-screen w-full overflow-hidden bg-cf-bg flex flex-col">
-				{/* TOP BAR */}
 				<div className="shrink-0">{top}</div>
 
 				<div className="flex-1 min-h-0 overflow-y-auto">
 					<div className="w-full flex flex-col gap-2 p-2">
-						{/* MOBILE SOURCES */}
 						<section className="shrink-0 rounded-xl border border-cf-border bg-cf-bg overflow-hidden">
 							<button
 								type="button"
@@ -152,12 +146,12 @@ export default function AppShell({ top, left, center, right }) {
 							)}
 						</section>
 
-						{/* MAIN EDITOR */}
-						<section className="w-full min-w-0 rounded-xl border border-cf-border bg-cf-bg overflow-hidden">
-							<div className="w-full min-w-0">{center}</div>
+						<section className="w-full min-w-0 min-h-0 rounded-xl border border-cf-border bg-cf-bg overflow-hidden">
+							<div className="w-full min-w-0 min-h-0 flex flex-col overflow-hidden">
+								{center}
+							</div>
 						</section>
 
-						{/* MOBILE SEARCH RESULTS */}
 						<section className="shrink-0 rounded-xl border border-cf-border bg-cf-bg overflow-hidden">
 							<button
 								type="button"
@@ -198,7 +192,6 @@ export default function AppShell({ top, left, center, right }) {
 	if (isTablet) {
 		return (
 			<div className="h-screen w-full overflow-hidden bg-cf-bg flex flex-col">
-				{/* TOP BAR */}
 				<div className="shrink-0">{top}</div>
 
 				<div
@@ -206,19 +199,18 @@ export default function AppShell({ top, left, center, right }) {
 					className="flex-1 min-h-0 min-w-0 overflow-y-auto px-2 pb-2 pt-2"
 				>
 					<div className="w-full min-w-0 grid grid-cols-[180px_minmax(0,1fr)] gap-2">
-						{/* SOURCES */}
 						<div className="min-w-0 min-h-[500px] max-h-[calc(100vh-100px)] overflow-hidden rounded-xl border border-cf-border bg-cf-bg shadow-sm">
 							<div className="w-full h-full min-w-0 overflow-y-auto">
 								{left}
 							</div>
 						</div>
 
-						{/* CENTER */}
-						<div className="min-w-0 rounded-xl border border-cf-border bg-cf-bg shadow-sm overflow-hidden">
-							<div className="w-full min-w-0">{center}</div>
+						<div className="min-w-0 min-h-0 flex flex-col rounded-xl border border-cf-border bg-cf-bg shadow-sm overflow-hidden">
+							<div className="w-full h-full min-h-0 min-w-0 flex flex-col overflow-hidden">
+								{center}
+							</div>
 						</div>
 
-						{/* RESULTS */}
 						<div className="col-span-2 min-w-0 min-h-[320px] max-h-[50vh] overflow-hidden rounded-xl border border-cf-border bg-cf-bg shadow-sm">
 							<div className="w-full h-full min-w-0 overflow-y-auto">
 								{right}
@@ -233,29 +225,25 @@ export default function AppShell({ top, left, center, right }) {
 	if (isTabletLandscape) {
 		return (
 			<div className="h-screen w-full overflow-hidden bg-cf-bg flex flex-col">
-				{/* TOP BAR */}
 				<div className="shrink-0">{top}</div>
 
 				<div
 					ref={containerRef}
 					className="flex-1 min-h-0 min-w-0 overflow-hidden px-2 pb-2 pt-2"
 				>
-					<div className="h-full min-w-0 flex gap-2">
-						{/* LEFT PANEL */}
+					<div className="h-full min-h-0 min-w-0 flex gap-2">
 						<div className="w-[190px] shrink-0 min-w-0 overflow-hidden rounded-xl border border-cf-border bg-cf-bg shadow-sm">
 							<div className="w-full h-full min-w-0 overflow-y-auto">
 								{left}
 							</div>
 						</div>
 
-						{/* CENTER PANEL */}
-						<div className="h-full min-w-0 flex-1 overflow-hidden rounded-xl border border-cf-border bg-cf-bg shadow-sm">
-							<div className="w-full h-full min-w-0">
+						<div className="h-full min-h-0 min-w-0 flex flex-col flex-1 overflow-hidden rounded-xl border border-cf-border bg-cf-bg shadow-sm">
+							<div className="w-full h-full min-h-0 min-w-0 flex flex-col overflow-hidden">
 								{center}
 							</div>
 						</div>
 
-						{/* RIGHT PANEL */}
 						<div className="w-[300px] shrink-0 min-w-0 overflow-hidden rounded-xl border border-cf-border bg-cf-bg shadow-sm">
 							<div className="w-full h-full min-w-0 overflow-y-auto">
 								{right}
@@ -269,15 +257,13 @@ export default function AppShell({ top, left, center, right }) {
 
 	return (
 		<div className="h-screen w-full overflow-hidden bg-cf-bg flex flex-col">
-			{/* TOP BAR */}
 			<div className="shrink-0">{top}</div>
 
 			<div
 				ref={containerRef}
 				className="flex-1 min-h-0 min-w-0 overflow-hidden px-3 pb-3 pt-3"
 			>
-				<div className="h-full min-w-0 flex gap-3">
-					{/* LEFT PANEL */}
+				<div className="h-full min-h-0 min-w-0 flex gap-3">
 					<div
 						className="h-full shrink-0 min-w-0 overflow-hidden rounded-xl border border-cf-border bg-cf-bg shadow-sm"
 						style={{
@@ -289,7 +275,6 @@ export default function AppShell({ top, left, center, right }) {
 						</div>
 					</div>
 
-					{/* LEFT RESIZE HANDLE */}
 					<div
 						onPointerDown={() => startResize("left")}
 						className="w-2 shrink-0 h-full cursor-col-resize flex items-center justify-center group"
@@ -297,12 +282,12 @@ export default function AppShell({ top, left, center, right }) {
 						<div className="w-[2px] h-10 rounded-full bg-transparent group-hover:bg-cf-border group-active:bg-cf-yellow transition-colors" />
 					</div>
 
-					{/* CENTER PANEL */}
-					<div className="h-full min-w-0 flex-1 overflow-hidden rounded-xl border border-cf-border bg-cf-bg shadow-sm">
-						<div className="w-full h-full min-w-0">{center}</div>
+					<div className="h-full min-h-0 min-w-0 flex flex-col flex-1 overflow-hidden rounded-xl border border-cf-border bg-cf-bg shadow-sm">
+						<div className="w-full h-full min-h-0 min-w-0 flex flex-col overflow-hidden">
+							{center}
+						</div>
 					</div>
 
-					{/* RIGHT RESIZE HANDLE */}
 					<div
 						onPointerDown={() => startResize("right")}
 						className="w-2 shrink-0 h-full cursor-col-resize flex items-center justify-center group"
@@ -310,7 +295,6 @@ export default function AppShell({ top, left, center, right }) {
 						<div className="w-[2px] h-10 rounded-full bg-transparent group-hover:bg-cf-border group-active:bg-cf-yellow transition-colors" />
 					</div>
 
-					{/* RIGHT PANEL */}
 					<div
 						className="h-full shrink-0 min-w-0 overflow-hidden rounded-xl border border-cf-border bg-cf-bg shadow-sm"
 						style={{

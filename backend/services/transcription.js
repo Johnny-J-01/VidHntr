@@ -3,15 +3,27 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { GoogleGenAI } from "@google/genai";
 import ffmpeg from "fluent-ffmpeg";
-import dotenv from 'dotenv'; 
+import dotenv from "dotenv";
 
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const FFMPEG_DIR = path.join(__dirname, "..", "..", "ffmpeg-9.0.1-essentials_build", "bin");
-const FFMPEG_PATH = path.join(FFMPEG_DIR, process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg");
+const FFMPEG_DIR = path.join(
+    __dirname,
+    "..",
+    "..",
+    "ffmpeg-9.0.1-essentials_build",
+    "bin"
+);
+
+const FFMPEG_PATH = path.join(
+    FFMPEG_DIR,
+    process.platform === "win32"
+        ? "ffmpeg.exe"
+        : "ffmpeg"
+);
 
 ffmpeg.setFfmpegPath(FFMPEG_PATH);
 
@@ -19,7 +31,9 @@ const CHUNK_SECONDS = 300;
 
 function getClient() {
     if (!process.env.GEMINI_API_KEY) {
-        throw new Error("GEMINI_API_KEY is not set. Add it to your .env file to enable transcription.");
+        throw new Error(
+            "GEMINI_API_KEY is not set. Add it to your .env file to enable transcription."
+        );
     }
 
     return new GoogleGenAI({
@@ -33,7 +47,11 @@ function splitAudio(audioPath, chunkDir, totalDuration) {
             fs.mkdirSync(chunkDir, { recursive: true });
         }
 
-        const chunkCount = Math.max(1, Math.ceil(totalDuration / CHUNK_SECONDS));
+        const chunkCount = Math.max(
+            1,
+            Math.ceil(totalDuration / CHUNK_SECONDS)
+        );
+
         const chunks = [];
         let index = 0;
 
@@ -44,7 +62,10 @@ function splitAudio(audioPath, chunkDir, totalDuration) {
             }
 
             const start = index * CHUNK_SECONDS;
-            const outPath = path.join(chunkDir, `chunk-${index}.mp3`);
+            const outPath = path.join(
+                chunkDir,
+                `chunk-${index}.mp3`
+            );
 
             ffmpeg(audioPath)
                 .setStartTime(start)
@@ -72,56 +93,85 @@ function splitAudio(audioPath, chunkDir, totalDuration) {
     });
 }
 
-async function transcribeAudio(audioPath, totalDuration, onProgress, onChunk) {
+async function transcribeAudio(
+    audioPath,
+    totalDuration,
+    onProgress,
+    onChunk
+) {
     const client = getClient();
 
     const chunkDir = path.join(
         path.dirname(audioPath),
-        `${path.basename(audioPath, path.extname(audioPath))}-chunks`
+        `${path.basename(
+            audioPath,
+            path.extname(audioPath)
+        )}-chunks`
     );
 
-    const shouldSplit = totalDuration > CHUNK_SECONDS + 30;
+    const shouldSplit =
+        totalDuration > CHUNK_SECONDS + 30;
 
     const chunks = shouldSplit
-        ? await splitAudio(audioPath, chunkDir, totalDuration)
-        : [{ path: audioPath, offset: 0, index: 0 }];
+        ? await splitAudio(
+              audioPath,
+              chunkDir,
+              totalDuration
+          )
+        : [
+              {
+                  path: audioPath,
+                  offset: 0,
+                  index: 0,
+              },
+          ];
 
     const allSegments = [];
 
     try {
-        for (let index = 0; index < chunks.length; index += 1) {
+        for (
+            let index = 0;
+            index < chunks.length;
+            index += 1
+        ) {
             const chunk = chunks[index];
 
-            console.log(`Transcribing chunk ${index + 1}/${chunks.length}: ${chunk.path}`);
+            console.log(
+                `Transcribing chunk ${index + 1}/${chunks.length}: ${chunk.path}`
+            );
 
-            const uploadedFile = await client.files.upload({
-                file: chunk.path,
-                config: {
-                    mimeType: "audio/mpeg",
-                },
-            });
+            const uploadedFile =
+                await client.files.upload({
+                    file: chunk.path,
+                    config: {
+                        mimeType: "audio/mpeg",
+                    },
+                });
 
-            const response = await client.models.generateContent({
-                model: "gemini-3.5-flash-lite",
-                contents: [
-                    {
-                        role: "user",
-                        parts: [
-                            {
-                                fileData: {
-                                    fileUri: uploadedFile.uri,
-                                    mimeType: uploadedFile.mimeType,
+            const response =
+                await client.models.generateContent({
+                    model: "gemini-3.5-flash-lite",
+                    contents: [
+                        {
+                            role: "user",
+                            parts: [
+                                {
+                                    fileData: {
+                                        fileUri:
+                                            uploadedFile.uri,
+                                        mimeType:
+                                            uploadedFile.mimeType,
+                                    },
                                 },
-                            },
-                            {
-                                text: `
+                                {
+                                    text: `
 Transcribe all spoken words in this audio.
 
 Return ONLY the transcript.
 
-For every spoken section, include timestamps in exactly this format:
+For every short spoken section, include timestamps in exactly this format:
 
-[MM:SS - MM:SS] spoken text
+[MM:SS.mmm - MM:SS.mmm] spoken text
 
 Rules:
 - Include all spoken words.
@@ -129,14 +179,20 @@ Rules:
 - Do not explain anything.
 - Do not add headings.
 - Do not add markdown.
-- Keep timestamps accurate.
+- Timestamps must represent the actual position of the spoken words in the audio.
+- Use millisecond precision.
 - Start timestamps from the beginning of this audio chunk.
-                                `.trim(),
-                            },
-                        ],
-                    },
-                ],
-            });
+- Create short caption segments instead of putting a long sentence into one segment.
+- Prefer segments around 2 to 5 seconds long.
+- Split naturally at pauses or sentence boundaries.
+- Do not leave large gaps between consecutive spoken segments.
+- Do not overlap timestamps.
+`.trim(),
+                                },
+                            ],
+                        },
+                    ],
+                });
 
             const transcriptText =
                 response?.text ||
@@ -147,18 +203,26 @@ Rules:
                 "";
 
             if (!transcriptText) {
-                throw new Error(`Gemini returned an empty transcription for chunk ${index + 1}.`);
+                throw new Error(
+                    `Gemini returned an empty transcription for chunk ${
+                        index + 1
+                    }.`
+                );
             }
 
-            const chunkSegments = parseTimestampedTranscript(
-                transcriptText,
-                chunk.offset
-            );
+            const chunkSegments =
+                parseTimestampedTranscript(
+                    transcriptText,
+                    chunk.offset
+                );
 
             allSegments.push(...chunkSegments);
 
             const completedChunks = index + 1;
-            const progress = Math.round((completedChunks / chunks.length) * 100);
+
+            const progress = Math.round(
+                (completedChunks / chunks.length) * 100
+            );
 
             if (onProgress) {
                 await onProgress(progress);
@@ -168,19 +232,30 @@ Rules:
                 await onChunk(chunkSegments, {
                     chunkIndex: chunk.index,
                     chunkStart: chunk.offset,
-                    chunkEnd: Math.min(chunk.offset + CHUNK_SECONDS, totalDuration),
+                    chunkEnd: Math.min(
+                        chunk.offset + CHUNK_SECONDS,
+                        totalDuration
+                    ),
                     completedChunks,
                     totalChunks: chunks.length,
                     progress,
                 });
             }
 
-            if (shouldSplit && fs.existsSync(chunk.path)) {
-                fs.rmSync(chunk.path, { force: true });
+            if (
+                shouldSplit &&
+                fs.existsSync(chunk.path)
+            ) {
+                fs.rmSync(chunk.path, {
+                    force: true,
+                });
             }
         }
     } finally {
-        if (shouldSplit && fs.existsSync(chunkDir)) {
+        if (
+            shouldSplit &&
+            fs.existsSync(chunkDir)
+        ) {
             fs.rmSync(chunkDir, {
                 recursive: true,
                 force: true,
@@ -191,31 +266,55 @@ Rules:
     return allSegments;
 }
 
-function parseTimestampedTranscript(text, offset = 0) {
+function parseTimestampedTranscript(
+    text,
+    offset = 0
+) {
     const segments = [];
     const lines = text.split(/\r?\n/);
 
     for (const line of lines) {
         const match = line.match(
-            /^\s*\[(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})\]\s*(.+?)\s*$/
+            /^\s*\[(\d{1,2}):(\d{2})(?:\.(\d{1,3}))?\s*-\s*(\d{1,2}):(\d{2})(?:\.(\d{1,3}))?\]\s*(.+?)\s*$/
         );
 
         if (!match) continue;
 
         const startMinutes = Number(match[1]);
         const startSeconds = Number(match[2]);
-        const endMinutes = Number(match[3]);
-        const endSeconds = Number(match[4]);
-        const textValue = match[5].trim();
+
+        const startMilliseconds = Number(
+            (match[3] || "0").padEnd(3, "0")
+        );
+
+        const endMinutes = Number(match[4]);
+        const endSeconds = Number(match[5]);
+
+        const endMilliseconds = Number(
+            (match[6] || "0").padEnd(3, "0")
+        );
+
+        const textValue = match[7].trim();
 
         if (!textValue) continue;
 
-        const start = startMinutes * 60 + startSeconds + offset;
-        const end = endMinutes * 60 + endSeconds + offset;
+        const start =
+            startMinutes * 60 +
+            startSeconds +
+            startMilliseconds / 1000 +
+            offset;
+
+        const end =
+            endMinutes * 60 +
+            endSeconds +
+            endMilliseconds / 1000 +
+            offset;
+
+        if (end <= start) continue;
 
         segments.push({
-            start: Number(start.toFixed(2)),
-            end: Number(end.toFixed(2)),
+            start: Number(start.toFixed(3)),
+            end: Number(end.toFixed(3)),
             text: textValue,
         });
     }

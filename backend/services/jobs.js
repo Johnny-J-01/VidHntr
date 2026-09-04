@@ -118,7 +118,7 @@ async function runAudioTranscriptionPipeline(videoId, audioPath, duration, thumb
     if (fs.existsSync(audioPath)) {
         try {
             fs.unlinkSync(audioPath);
-        } catch {}
+        } catch { }
     }
 }
 
@@ -193,7 +193,7 @@ async function runYouTubePipeline(videoId, url) {
 
         try {
             metadata = await ytdlp.fetchMetadata(url);
-        } catch {}
+        } catch { }
 
         if (metadata?.title) {
             store.patchVideo(videoId, {
@@ -315,6 +315,35 @@ async function runExportJob(exportId) {
                 exp.end,
                 captionsSrtPath
             );
+            // TEMPORARY CAPTION TIMING DIAGNOSTIC
+            try {
+                const srtContent = fs.readFileSync(
+                    captionsSrtPath,
+                    "utf-8"
+                );
+
+                console.log("\n================ SRT TIMING DIAGNOSTIC ====================");
+
+                console.log("Export ID:", exportId);
+                console.log("Requested start:", exp.start);
+                console.log("Requested end:", exp.end);
+
+                console.log("\nFirst SRT entries:");
+
+                console.log(
+                    srtContent
+                        .split(/\r?\n\r?\n/)
+                        .slice(0, 5)
+                        .join("\n\n")
+                );
+
+                console.log("\n============================================================\n");
+            } catch (diagnosticError) {
+                console.error(
+                    "SRT diagnostic failed:",
+                    diagnosticError
+                );
+            }
         }
 
         let sourcePath = video.filePath;
@@ -362,6 +391,48 @@ async function runExportJob(exportId) {
             ) {
                 throw new Error(
                     "YouTube section download finished but the video file was not found."
+                );
+            }
+            // TEMPORARY TIMING DIAGNOSTIC
+            try {
+                const timing = await ffmpegSvc.probeTiming(
+                    temporaryVideoPath
+                );
+
+                console.log("\n================ YOUTUBE TIMING DIAGNOSTIC ================");
+                console.log("Export ID:", exportId);
+                console.log("Video ID:", video.id);
+
+                console.log("\nRequested export:");
+                console.log("  start:", exp.start);
+                console.log("  end:", exp.end);
+                console.log("  requested duration:", exp.end - exp.start);
+
+                console.log("\nDownloaded section:");
+                console.log("  file:", temporaryVideoPath);
+                console.log("  format start_time:", timing.formatStartTime);
+                console.log("  format duration:", timing.formatDuration);
+
+                console.log("\nStreams:");
+
+                for (const stream of timing.streams) {
+                    console.log({
+                        index: stream.index,
+                        type: stream.codecType,
+                        codec: stream.codecName,
+                        start_time: stream.startTime,
+                        duration: stream.duration,
+                        time_base: stream.timeBase,
+                        avg_frame_rate: stream.avgFrameRate,
+                        r_frame_rate: stream.rFrameRate,
+                    });
+                }
+
+                console.log("\n============================================================\n");
+            } catch (diagnosticError) {
+                console.error(
+                    "Timing diagnostic failed:",
+                    diagnosticError
                 );
             }
 
@@ -439,7 +510,7 @@ async function runExportJob(exportId) {
         ) {
             try {
                 fs.unlinkSync(captionsSrtPath);
-            } catch {}
+            } catch { }
         }
 
         if (
@@ -448,7 +519,7 @@ async function runExportJob(exportId) {
         ) {
             try {
                 fs.unlinkSync(temporaryVideoPath);
-            } catch {}
+            } catch { }
         }
 
         store.patchExport(exportId, {
@@ -467,7 +538,7 @@ async function runExportJob(exportId) {
         ) {
             try {
                 fs.unlinkSync(captionsSrtPath);
-            } catch {}
+            } catch { }
         }
 
         if (
@@ -476,7 +547,7 @@ async function runExportJob(exportId) {
         ) {
             try {
                 fs.unlinkSync(temporaryVideoPath);
-            } catch {}
+            } catch { }
         }
 
         markExportError(

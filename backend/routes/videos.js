@@ -7,6 +7,7 @@ import fs from "fs";
 import store from "../services/store.js";
 import jobs from "../services/jobs.js";
 import ytdlp from "../services/ytdlp.js";
+import ai from "../services/ai.js";
 
 const router = express.Router();
 
@@ -34,6 +35,7 @@ const upload = multer({
             callback(new Error("Unsupported file type. Upload MP4, MOV, or WebM."));
             return;
         }
+
         callback(null, true);
     },
 });
@@ -69,7 +71,9 @@ function getYouTubeVideoId(url) {
             if (pathname.startsWith("/live/")) return pathname.split("/")[2] || null;
         }
 
-        if (parsed.hostname === "youtu.be") return parsed.pathname.split("/")[1] || null;
+        if (parsed.hostname === "youtu.be") {
+            return parsed.pathname.split("/")[1] || null;
+        }
 
         return null;
     } catch {
@@ -80,11 +84,15 @@ function getYouTubeVideoId(url) {
 router.post("/upload", (request, response) => {
     upload.single("video")(request, response, (error) => {
         if (error) {
-            return response.status(400).json({ error: error.message || "Upload failed." });
+            return response.status(400).json({
+                error: error.message || "Upload failed.",
+            });
         }
 
         if (!request.file) {
-            return response.status(400).json({ error: "No video file was provided." });
+            return response.status(400).json({
+                error: "No video file was provided.",
+            });
         }
 
         const id = request.videoId;
@@ -124,102 +132,64 @@ router.get("/", (request, response) => {
     response.json(store.listVideos().map(publicVideo));
 });
 
-router.post("/youtube", async (request, response) => {
-    const { url } = request.body;
+router.post("/youtube", (request, response) => {
+    const { url } = request.body || {};
 
     if (!ytdlp.isValidYouTubeUrl(url)) {
-        return response.status(400).json({ error: "Invalid YouTube URL." });
+        return response.status(400).json({
+            error: "That doesn't look like a valid YouTube URL.",
+        });
     }
 
     const id = uuid();
+    const youtubeId = getYouTubeVideoId(url);
 
-    try {
-        const metadata = await ytdlp.fetchMetadata(url);
-        const title = metadata.title || "YouTube video";
+    const video = {
+        id,
+        title: "YouTube video",
+        sourceType: "youtube",
+        sourceUrl: url,
+        youtubeId,
+        filePath: null,
+        thumbnailPath: null,
+        duration: null,
+        status: "QUEUED",
+        progress: 0,
+        transcript: null,
+        transcriptPath: null,
+        createdAt: Date.now(),
+    };
 
-        const video = {
-            id,
-            title,
-            sourceType: "youtube",
-            sourceUrl: url,
-            filePath: null,
-            thumbnailPath: null,
-            duration: metadata.duration || null,
-            status: "DOWNLOADING",
-            progress: 0,
-            transcript: null,
-            transcriptPath: null,
-            createdAt: Date.now(),
-        };
+    store.upsertVideo(video);
+    jobs.runYouTubePipeline(id, url);
 
-        store.upsertVideo(video);
-
-        response.status(202).json({
-            videoId: id,
-            status: "downloading",
-        });
-
-        try {
-            const result = await ytdlp.downloadYouTubeVideo(
-                url,
-                jobs.DIRS.uploads,
-                id,
-                (progress) => {
-                    const current = store.getVideo(id);
-                    if (!current) return;
-
-                    store.upsertVideo({
-                        ...current,
-                        progress,
-                    });
-                }
-            );
-
-            const current = store.getVideo(id);
-            if (!current) return;
-
-            store.upsertVideo({
-                ...current,
-                filePath: result.filePath,
-                status: "QUEUED",
-                progress: 100,
-            });
-
-            jobs.runProcessingPipeline(id);
-        } catch (downloadError) {
-            const current = store.getVideo(id);
-
-            if (current) {
-                store.upsertVideo({
-                    ...current,
-                    status: "ERROR",
-                    progress: 0,
-                    error: downloadError.message,
-                });
-            }
-        }
-    } catch (error) {
-        return response.status(500).json({
-            error: error.message || "Failed to process YouTube URL.",
-        });
-    }
+    response.status(202).json({
+        videoId: id,
+        status: "queued",
+    });
 });
 
 router.get("/:id/youtube", (request, response) => {
     const video = store.getVideo(request.params.id);
 
     if (!video) {
-        return response.status(404).json({ error: "Video not found." });
+        return response.status(404).json({
+            error: "Video not found.",
+        });
     }
 
     if (video.sourceType !== "youtube") {
-        return response.status(400).json({ error: "This video is not a YouTube video." });
+        return response.status(400).json({
+            error: "This video is not a YouTube video.",
+        });
     }
 
-    const youtubeId = getYouTubeVideoId(video.sourceUrl);
+    const youtubeId = video.youtubeId || getYouTubeVideoId(video.sourceUrl);
 
     if (!youtubeId) {
-        return response.status(400).json({ error: "Could not determine the YouTube video ID." });
+        return response.status(400).json({
+            error: "Could not determine the YouTube video ID.",
+        });
     }
 
     response.json({
@@ -234,7 +204,9 @@ router.get("/:id/status", (request, response) => {
     const video = store.getVideo(request.params.id);
 
     if (!video) {
-        return response.status(404).json({ error: "Video not found." });
+        return response.status(404).json({
+            error: "Video not found.",
+        });
     }
 
     response.json({
@@ -244,21 +216,154 @@ router.get("/:id/status", (request, response) => {
     });
 });
 
+router.get("/:id/transcript", (request, response) => {
+    const video = store.getVideo(request.params.id);
+
+    if (!video) {
+        return response.status(404).json({
+            error: "Video not found.",
+        });
+    }
+
+    if (!video.transcriptPath || !fs.existsSync(video.transcriptPath)) {
+        return response.status(409).json({
+            error: "Transcript is not ready yet.",
+        });
+    }
+
+    const transcript = JSON.parse(
+        fs.readFileSync(video.transcriptPath, "utf-8")
+    );
+
+    response.json({
+        videoId: video.id,
+        transcript,
+    });
+});
+
 router.get("/:id/file", (request, response) => {
     const video = store.getVideo(request.params.id);
 
     if (!video || !video.filePath || !fs.existsSync(video.filePath)) {
-        return response.status(404).json({ error: "Video file not found." });
+        return response.status(404).json({
+            error: "Video file not found.",
+        });
     }
 
     response.sendFile(path.resolve(video.filePath));
+});
+
+router.get("/:id/thumbnail", (request, response) => {
+    const video = store.getVideo(request.params.id);
+
+    if (!video || !video.thumbnailPath || !fs.existsSync(video.thumbnailPath)) {
+        return response.status(404).end();
+    }
+
+    response.sendFile(path.resolve(video.thumbnailPath));
+});
+
+function loadTranscriptOrThrow(video) {
+    if (!video.transcriptPath || !fs.existsSync(video.transcriptPath)) {
+        const error = new Error(
+            "This video is still processing. Try again once it is ready."
+        );
+
+        error.status = 409;
+        throw error;
+    }
+
+    return JSON.parse(
+        fs.readFileSync(video.transcriptPath, "utf-8")
+    );
+}
+
+router.post("/:id/search", async (request, response) => {
+    const video = store.getVideo(request.params.id);
+
+    if (!video) {
+        return response.status(404).json({
+            error: "Video not found.",
+        });
+    }
+
+    try {
+        const transcript = loadTranscriptOrThrow(video);
+        const { query, mood } = request.body || {};
+
+        let results;
+
+        if (mood) {
+            results = await ai.searchByMood(
+                transcript,
+                mood,
+                video.duration || 0
+            );
+        } else {
+            if (!query || !query.trim()) {
+                return response.status(400).json({
+                    error: "Enter something to search for.",
+                });
+            }
+
+            results = await ai.semanticSearch(
+                transcript,
+                query.trim(),
+                video.duration || 0
+            );
+        }
+
+        response.json({
+            videoId: video.id,
+            query: query || mood,
+            results,
+        });
+    } catch (error) {
+        response.status(error.status || 500).json({
+            error:
+                error.message ||
+                "Something went wrong while searching this video.",
+        });
+    }
+});
+
+router.post("/:id/suggestions", async (request, response) => {
+    const video = store.getVideo(request.params.id);
+
+    if (!video) {
+        return response.status(404).json({
+            error: "Video not found.",
+        });
+    }
+
+    try {
+        const transcript = loadTranscriptOrThrow(video);
+
+        const suggestions = await ai.suggestClips(
+            transcript,
+            video.duration || 0
+        );
+
+        response.json({
+            videoId: video.id,
+            suggestions,
+        });
+    } catch (error) {
+        response.status(error.status || 500).json({
+            error:
+                error.message ||
+                "Something went wrong while analyzing this video.",
+        });
+    }
 });
 
 router.get("/:id", (request, response) => {
     const video = store.getVideo(request.params.id);
 
     if (!video) {
-        return response.status(404).json({ error: "Video not found." });
+        return response.status(404).json({
+            error: "Video not found.",
+        });
     }
 
     response.json(publicVideo(video));

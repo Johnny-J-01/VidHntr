@@ -1,10 +1,8 @@
 import express from "express";
 import cors from "cors";
-import dotenv from "dotenv";
+import "dotenv/config";
 
 import videosRouter from "./routes/videos.js";
-
-dotenv.config(); 
 
 const app = express();
 const PORT = process.env.PORT || 8787;

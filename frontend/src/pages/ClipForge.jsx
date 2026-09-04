@@ -48,6 +48,7 @@ export default function ClipForge() {
 	const [youtubeInfo, setYoutubeInfo] = useState(null);
 	const [youtubeLoading, setYoutubeLoading] = useState(false);
 	const [youtubeError, setYoutubeError] = useState(null);
+	const [transcript, setTranscript] = useState([]);
 
 	const videoRef = useRef(null);
 
@@ -58,6 +59,59 @@ export default function ClipForge() {
 	const exp = useExport();
 
 	const suggestions = suggestionsByVideo[selectedId] || [];
+
+	useEffect(() => {
+		if (!selectedId) {
+			setTranscript([]);
+			return;
+		}
+
+		let cancelled = false;
+
+		async function loadTranscript() {
+			try {
+				const res = await api.getTranscript(selectedId);
+				if (!cancelled && Array.isArray(res?.transcript)) {
+					setTranscript(res.transcript);
+				}
+			} catch (e) {
+				// Transcript may still be generating
+			}
+		}
+
+		loadTranscript();
+
+		let timer;
+		if (video?.status && video.status !== "READY" && video.status !== "ERROR") {
+			timer = setInterval(loadTranscript, 2500);
+		}
+
+		return () => {
+			cancelled = true;
+			if (timer) clearInterval(timer);
+		};
+	}, [selectedId, video?.status]);
+
+	const activeYouTubeCaption = useMemo(() => {
+		if (
+			captions === "off" ||
+			!Array.isArray(transcript) ||
+			transcript.length === 0
+		) {
+			return null;
+		}
+
+		const seg = transcript.find(
+			(s) => playhead >= Number(s.start) && playhead <= Number(s.end),
+		);
+		if (seg) return seg.text;
+
+		const recent = transcript.find(
+			(s) =>
+				playhead >= Number(s.end) && playhead <= Number(s.end) + 0.8,
+		);
+		return recent ? recent.text : null;
+	}, [captions, transcript, playhead]);
 
 	useEffect(() => {
 		let cancelled = false;
@@ -433,12 +487,13 @@ export default function ClipForge() {
 								<VideoPlayer
 									ref={videoRef}
 									src={api.videoFileUrl(video.id)}
-									captionsOn={captions === "burn"}
+									captionsOn={captions === "burn" || captions === "on"}
 									onToggleCaptions={() =>
 										setCaptions((prev) =>
-											prev === "burn" ? "off" : "burn",
+											prev === "off" ? "burn" : "off",
 										)
 									}
+									transcript={transcript}
 								/>
 							) : isYouTube ? (
 								<div className="aspect-video bg-black rounded overflow-hidden relative">
@@ -461,16 +516,31 @@ export default function ClipForge() {
 											</div>
 										</div>
 									) : youtubeInfo ? (
-										<iframe
-											ref={youtubeRef}
-											className="w-full h-full"
-											src={`${youtubeInfo.embedUrl}?enablejsapi=1&origin=${encodeURIComponent(
-												window.location.origin,
-											)}`}
-											title={video.title}
-											allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-											allowFullScreen
-										/>
+										<>
+											<iframe
+												ref={youtubeRef}
+												className="w-full h-full"
+												src={`${youtubeInfo.embedUrl}?enablejsapi=1&origin=${encodeURIComponent(
+													window.location.origin,
+												)}`}
+												title={video.title}
+												allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+												allowFullScreen
+											/>
+											{captions !== "off" && (
+												<div className="absolute bottom-6 left-4 right-4 text-center pointer-events-none z-20">
+													{activeYouTubeCaption ? (
+														<span className="bg-black/90 text-cf-yellow font-medium text-xs sm:text-sm px-4 py-1.5 rounded-lg shadow-2xl border border-cf-yellow/40 backdrop-blur inline-block max-w-[90%] leading-relaxed">
+															{activeYouTubeCaption}
+														</span>
+													) : (
+														<span className="bg-black/80 text-cf-muted font-medium text-xs px-3 py-1 rounded shadow border border-cf-border">
+															Captions Enabled
+														</span>
+													)}
+												</div>
+											)}
+										</>
 									) : null}
 								</div>
 							) : (

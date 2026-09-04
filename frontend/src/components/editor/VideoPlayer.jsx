@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useRef, useState } from "react";
+import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 
 function formatTime(t) {
 	if (!Number.isFinite(t) || t < 0) return "0:00";
@@ -15,7 +15,7 @@ function formatTime(t) {
 }
 
 const VideoPlayer = forwardRef(function VideoPlayer(
-	{ src, captionsOn, onToggleCaptions },
+	{ src, captionsOn, onToggleCaptions, transcript = [] },
 	ref,
 ) {
 	const containerRef = useRef(null);
@@ -31,6 +31,25 @@ const VideoPlayer = forwardRef(function VideoPlayer(
 
 	const [controlsVisible, setControlsVisible] = useState(true);
 	const [centerFlash, setCenterFlash] = useState(null);
+
+	// Compute synchronized caption segment for the exact current timestamp
+	const currentCaption = useMemo(() => {
+		if (!captionsOn || !Array.isArray(transcript) || transcript.length === 0) {
+			return null;
+		}
+
+		// Direct timestamp match
+		const seg = transcript.find(
+			(s) => current >= Number(s.start) && current <= Number(s.end),
+		);
+		if (seg) return seg.text;
+
+		// 0.8s smooth trailing buffer between sentences
+		const recent = transcript.find(
+			(s) => current >= Number(s.end) && current <= Number(s.end) + 0.8,
+		);
+		return recent ? recent.text : null;
+	}, [captionsOn, transcript, current]);
 
 	// Auto-hide controls logic
 	function resetHideTimer() {
@@ -227,16 +246,22 @@ const VideoPlayer = forwardRef(function VideoPlayer(
 					</div>
 				)}
 
-				{/* CAPTIONS OVERLAY */}
+				{/* SYNCHRONIZED CAPTIONS OVERLAY */}
 				{captionsOn && (
 					<div
-						className={`absolute left-2 right-2 text-center pointer-events-none transition-all duration-300 z-20 ${
-							controlsVisible ? "bottom-16" : "bottom-4"
+						className={`absolute left-4 right-4 text-center pointer-events-none transition-all duration-300 z-20 ${
+							controlsVisible ? "bottom-16" : "bottom-6"
 						}`}
 					>
-						<span className="bg-black/85 text-cf-yellow font-medium text-xs sm:text-sm px-3 py-1 rounded shadow-lg border border-cf-yellow/30">
-							Captions Enabled (Burned on Export)
-						</span>
+						{currentCaption ? (
+							<span className="bg-black/90 text-cf-yellow font-medium text-xs sm:text-sm md:text-base px-4 py-1.5 rounded-lg shadow-2xl border border-cf-yellow/40 backdrop-blur inline-block max-w-[90%] leading-relaxed">
+								{currentCaption}
+							</span>
+						) : (
+							<span className="bg-black/80 text-cf-muted font-medium text-xs px-3 py-1 rounded shadow border border-cf-border">
+								Captions Enabled
+							</span>
+						)}
 					</div>
 				)}
 
@@ -417,5 +442,6 @@ const VideoPlayer = forwardRef(function VideoPlayer(
 });
 
 export default VideoPlayer;
+
 
 

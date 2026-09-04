@@ -434,6 +434,11 @@ export default function ClipForge() {
 									ref={videoRef}
 									src={api.videoFileUrl(video.id)}
 									captionsOn={captions === "burn"}
+									onToggleCaptions={() =>
+										setCaptions((prev) =>
+											prev === "burn" ? "off" : "burn",
+										)
+									}
 								/>
 							) : isYouTube ? (
 								<div className="aspect-video bg-black rounded overflow-hidden relative">
@@ -553,6 +558,10 @@ export default function ClipForge() {
 										start={clipStart}
 										end={clipEnd}
 										duration={video.duration}
+										onChange={(s, e) => {
+											setClipStart(s);
+											setClipEnd(e);
+										}}
 									/>
 
 									{/* <div className="flex items-start justify-between gap-8 pt-2 border-t border-cf-border"> */}

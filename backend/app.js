@@ -3,6 +3,7 @@ import cors from "cors";
 import "dotenv/config";
 
 import videosRouter from "./routes/videos.js";
+import exportsRouter from "./routes/exports.js";
 
 const app = express();
 const PORT = process.env.PORT || 8787;
@@ -18,6 +19,7 @@ app.use((error, request, response, next) => {
     });
 });
 
+app.use("/api/exports", exportsRouter);
 app.use("/api/videos", videosRouter);
 app.get("/api/health", (request, response) => {
     response.json({

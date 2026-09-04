@@ -1,4 +1,4 @@
-export default function ExportButton() {
+export default function ExportButton({ onClick, disabled }) {
 	return (
 		<button
 			onClick={onClick}

@@ -10,6 +10,7 @@ const FFMPEG_DIR = path.join(
     __dirname,
     "..",
     "..",
+    "..",
     "ffmpeg-9.0.1-essentials_build",
     "bin"
 );
@@ -27,6 +28,7 @@ function resolveYtDlpPath() {
 
     const binDir = path.join(
         __dirname,
+        "..",
         "..",
         "bin"
     );

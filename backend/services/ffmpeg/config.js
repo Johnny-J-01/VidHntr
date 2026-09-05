@@ -10,6 +10,7 @@ const FFMPEG_PATH = path.resolve(
   __dirname,
   "..",
   "..",
+  "..",
   "ffmpeg-9.0.1-essentials_build",
   "bin",
   "ffmpeg.exe",
@@ -17,6 +18,7 @@ const FFMPEG_PATH = path.resolve(
 
 const FFPROBE_PATH = path.resolve(
   __dirname,
+  "..",
   "..",
   "..",
   "ffmpeg-9.0.1-essentials_build",
@@ -542,10 +544,15 @@ export {
   probeTiming,
   extractAudio,
   generateThumbnail,
+  srtTimestamp,
   buildSrtForRange,
   normalizeVideoSection,
   exportClip,
   QUALITY_PRESETS,
+  buildFillFilter,
+  buildFitFilter,
+  escapeFilterPath,
+  buildCaptionFilter,
 };
 
 export default {

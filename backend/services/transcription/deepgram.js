@@ -13,6 +13,7 @@ const FFMPEG_DIR = path.join(
     __dirname,
     "..",
     "..",
+    "..",
     "ffmpeg-9.0.1-essentials_build",
     "bin"
 );
@@ -862,6 +863,19 @@ async function transcribeAudio(
 
 export {
     transcribeAudio,
+    getDeepgramKey,
+    splitAudio,
+    transcribeChunk,
+    getWordText,
+    cleanWordText,
+    hasStrongPunctuation,
+    hasMediumPunctuation,
+    formatWords,
+    buildCaptionSegments,
+    deduplicateBoundaryWords,
+    normalizeSegments,
+    validateInvariants,
+    CHUNK_SECONDS,
 };
 
 export default {

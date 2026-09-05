@@ -4,9 +4,9 @@ import { v4 as uuid } from "uuid";
 import fs from "fs";
 
 import store from "../services/store.js";
-import jobs from "../services/jobs.js";
-import ytdlp from "../services/ytdlp.js";
-import ai from "../services/ai.js";
+import jobs from "../services/video/processing.js";
+import ytdlp from "../services/ytdlp/client.js";
+import ai from "../services/ai/client.js";
 
 const ALLOWED_MIME = new Set(["video/mp4", "video/quicktime", "video/webm", "video/x-matroska"]);
 const MAX_SIZE_BYTES = 2 * 1024 * 1024 * 1024;

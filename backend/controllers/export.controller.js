@@ -2,7 +2,7 @@ import { v4 as uuid } from "uuid";
 import fs from "fs";
 
 import store from "../services/store.js";
-import jobs from "../services/jobs.js";
+import jobs from "../services/export/processing.js";
 
 const QUALITIES = new Set(["low", "medium", "high", "maximum"]);
 const CROP_MODES = new Set(["fill", "fit"]);

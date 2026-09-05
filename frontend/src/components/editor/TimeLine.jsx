@@ -61,21 +61,21 @@ export default function Timeline({
 		return { start: 0, end: initEnd };
 	});
 
-	// Auto-focus view range around selected clip with 3-7 minutes padding on selection change
+	// Auto-focus view range around selected clip with padding proportional to video duration
 	useEffect(() => {
 		if (!duration) return;
 
 		if (end > start) {
 			const clipLen = end - start;
-			// 3 to 7 minutes padding depending on clip length
-			const padding = Math.max(180, Math.min(420, clipLen * 2.5));
+			const maxPad = Math.min(300, duration * 0.25);
+			const minPad = Math.min(10, duration * 0.1);
+			const padding = Math.max(minPad, Math.min(maxPad, clipLen * 1.5));
 
 			const newViewStart = Math.max(0, start - padding);
 			const newViewEnd = Math.min(duration, end + padding);
 
 			setViewRange({ start: newViewStart, end: newViewEnd });
 		} else {
-			// If no clip selected, default to initial 15-min view window or full video
 			const defaultSpan = Math.min(duration, 900);
 			setViewRange({ start: 0, end: defaultSpan });
 		}
@@ -84,7 +84,6 @@ export default function Timeline({
 	const viewStart = viewRange.start;
 	const viewEnd = Math.max(viewStart + 1, viewRange.end);
 	const viewSpan = viewEnd - viewStart;
-	const isLongVideo = duration >= 1200; // >= 20 mins
 
 	const pctFor = useCallback(
 		(t) => {
@@ -125,49 +124,82 @@ export default function Timeline({
 		setHoverX(null);
 	}
 
+	const stateRef = useRef({
+		start,
+		end,
+		duration,
+		viewStart,
+		viewSpan,
+		onChange,
+	});
+
+	useEffect(() => {
+		stateRef.current = {
+			start,
+			end,
+			duration,
+			viewStart,
+			viewSpan,
+			onChange,
+		};
+	}, [start, end, duration, viewStart, viewSpan, onChange]);
+
 	function startDrag(handle, e) {
 		e.stopPropagation();
+		e.preventDefault();
 		setDragging(handle);
 
+		const target = e.currentTarget;
+		const pointerId = e.pointerId;
+
+		try {
+			target.setPointerCapture(pointerId);
+		} catch (err) {}
+
 		function onMove(ev) {
-			const t = timeFromClientX(ev.clientX);
+			if (!trackRef.current) return;
+			const rect = trackRef.current.getBoundingClientRect();
+			const pct = Math.max(
+				0,
+				Math.min(1, (ev.clientX - rect.left) / rect.width),
+			);
+
+			const {
+				start: curStart,
+				end: curEnd,
+				duration: totalDuration,
+				viewStart: curViewStart,
+				viewSpan: curViewSpan,
+				onChange: triggerChange,
+			} = stateRef.current;
+
+			const t = curViewStart + pct * curViewSpan;
 
 			if (handle === "start") {
-				const nextStart = Math.max(0, Math.min(t, end - 0.1));
-				onChange(nextStart, end);
-
-				// Auto expand view start if dragging near left edge
-				if (nextStart < viewStart + 10 && viewStart > 0) {
-					setViewRange((v) => ({
-						...v,
-						start: Math.max(0, v.start - 60),
-					}));
-				}
+				const nextStart = Math.max(0, Math.min(t, curEnd - 0.1));
+				triggerChange?.(nextStart, curEnd);
 			} else if (handle === "end") {
 				const nextEnd = Math.min(
-					duration,
-					Math.max(t, start + 0.1),
+					totalDuration,
+					Math.max(t, curStart + 0.1),
 				);
-				onChange(start, nextEnd);
-
-				// Auto expand view end if dragging near right edge
-				if (nextEnd > viewEnd - 10 && viewEnd < duration) {
-					setViewRange((v) => ({
-						...v,
-						end: Math.min(duration, v.end + 60),
-					}));
-				}
+				triggerChange?.(curStart, nextEnd);
 			}
 		}
 
-		function onUp() {
+		function onUp(ev) {
 			setDragging(null);
+			try {
+				target.releasePointerCapture(pointerId);
+			} catch (err) {}
 			window.removeEventListener("pointermove", onMove);
 			window.removeEventListener("pointerup", onUp);
+			window.removeEventListener("pointercancel", onUp);
 		}
 
 		window.addEventListener("pointermove", onMove);
-		window.addEventListener("pointerup", onUp, { once: true });
+		window.addEventListener("pointerup", onUp);
+		window.addEventListener("pointercancel", onUp);
 	}
 
 	function clickTrack(e) {
@@ -178,17 +210,37 @@ export default function Timeline({
 
 	function zoomView(factor) {
 		const center = (viewStart + viewEnd) / 2;
-		const newSpan = Math.max(30, Math.min(duration, viewSpan * factor));
+		const newSpan = Math.max(5, Math.min(duration, viewSpan * factor));
 
-		const newStart = Math.max(0, center - newSpan / 2);
-		const newEnd = Math.min(duration, newStart + newSpan);
+		let newStart = Math.max(0, center - newSpan / 2);
+		let newEnd = Math.min(duration, newStart + newSpan);
+
+		if (newEnd >= duration) {
+			newStart = Math.max(0, duration - newSpan);
+		}
 
 		setViewRange({ start: newStart, end: newEnd });
 	}
 
-	function panView(seconds) {
-		const newStart = Math.max(0, Math.min(duration - viewSpan, viewStart + seconds));
-		const newEnd = Math.min(duration, newStart + viewSpan);
+	function panView(direction) {
+		let currentSpan = viewSpan;
+		// If currently showing full duration, automatically focus to 75% span to enable immediate panning
+		if (currentSpan >= duration) {
+			currentSpan = duration * 0.75;
+		}
+
+		const step = Math.max(1, currentSpan * 0.25) * direction;
+
+		let newStart = viewStart + step;
+		let newEnd = newStart + currentSpan;
+
+		if (newStart < 0) {
+			newStart = 0;
+			newEnd = Math.min(duration, currentSpan);
+		} else if (newEnd > duration) {
+			newEnd = duration;
+			newStart = Math.max(0, duration - currentSpan);
+		}
 
 		setViewRange({ start: newStart, end: newEnd });
 	}
@@ -196,7 +248,9 @@ export default function Timeline({
 	function focusClipWindow() {
 		if (end > start) {
 			const clipLen = end - start;
-			const padding = Math.max(180, Math.min(420, clipLen * 2.5));
+			const maxPad = Math.min(300, duration * 0.25);
+			const minPad = Math.min(10, duration * 0.1);
+			const padding = Math.max(minPad, Math.min(maxPad, clipLen * 1.5));
 
 			const newStart = Math.max(0, start - padding);
 			const newEnd = Math.min(duration, end + padding);
@@ -215,53 +269,48 @@ export default function Timeline({
 
 	return (
 		<div className="w-full min-w-0 bg-cf-panel p-3 rounded-xl border border-cf-border flex flex-col gap-2">
-			{/* TIMELINE TOOLBAR & ADAPTIVE VIEW CONTROLS */}
+			{/* DEFAULT TIMELINE CONTROL PANEL */}
 			<div className="flex items-center justify-between gap-2 text-xs border-b border-cf-border pb-2 flex-wrap">
 				<div className="flex items-center gap-2 flex-wrap">
 					<span className="font-semibold text-cf-text text-[12px]">
 						Timeline Ruler
 					</span>
 					<span className="text-[11px] font-mono text-cf-yellow bg-cf-yellow/10 border border-cf-yellow/30 px-2 py-0.5 rounded">
-						Window: {formatTickTime(viewStart, isLongVideo)} –{" "}
-						{formatTickTime(viewEnd, isLongVideo)}
+						Window: {formatTickTime(viewStart)} – {formatTickTime(viewEnd)}
 					</span>
 					<span className="text-[11px] text-cf-muted font-mono">
-						(Full Video: {formatTickTime(duration, isLongVideo)})
+						(Total: {formatTickTime(duration)})
 					</span>
 				</div>
 
-				{/* ADAPTIVE VIEW & ZOOM BUTTONS */}
+				{/* DEFAULT CONTROL PANEL BUTTONS - ALWAYS AVAILABLE */}
 				<div className="flex items-center gap-1.5 flex-wrap">
-					{isLongVideo && (
-						<>
-							<button
-								type="button"
-								onClick={() => panView(-120)}
-								disabled={viewStart <= 0}
-								className="px-2 py-0.5 rounded bg-cf-panel2 border border-cf-border hover:border-cf-yellow/50 disabled:opacity-40 text-[11px]"
-								title="Pan 2 mins back"
-							>
-								← Pan
-							</button>
+					<button
+						type="button"
+						onClick={() => panView(-1)}
+						disabled={!duration}
+						className="px-2.5 py-1 rounded bg-cf-panel2 border border-cf-border hover:border-cf-yellow/50 active:bg-cf-yellow/10 text-[11px] font-medium text-cf-text transition-colors flex items-center gap-1 cursor-pointer disabled:opacity-40"
+						title="Pan left across timeline"
+					>
+						<span>←</span> Pan Left
+					</button>
 
-							<button
-								type="button"
-								onClick={() => panView(120)}
-								disabled={viewEnd >= duration}
-								className="px-2 py-0.5 rounded bg-cf-panel2 border border-cf-border hover:border-cf-yellow/50 disabled:opacity-40 text-[11px]"
-								title="Pan 2 mins forward"
-							>
-								Pan →
-							</button>
-						</>
-					)}
+					<button
+						type="button"
+						onClick={() => panView(1)}
+						disabled={!duration}
+						className="px-2.5 py-1 rounded bg-cf-panel2 border border-cf-border hover:border-cf-yellow/50 active:bg-cf-yellow/10 text-[11px] font-medium text-cf-text transition-colors flex items-center gap-1 cursor-pointer disabled:opacity-40"
+						title="Pan right across timeline"
+					>
+						Pan Right <span>→</span>
+					</button>
 
 					<button
 						type="button"
 						onClick={() => zoomView(0.7)}
-						disabled={viewSpan <= 30}
-						className="px-2 py-0.5 rounded bg-cf-panel2 border border-cf-border hover:border-cf-yellow/50 disabled:opacity-40 text-[11px]"
-						title="Zoom In (Narrows timeline view window)"
+						disabled={viewSpan <= 3}
+						className="px-2 py-1 rounded bg-cf-panel2 border border-cf-border hover:border-cf-yellow/50 active:bg-cf-yellow/10 disabled:opacity-40 text-[11px] font-medium text-cf-text transition-colors cursor-pointer"
+						title="Zoom In (Narrows timeline window)"
 					>
 						+ Zoom
 					</button>
@@ -270,8 +319,8 @@ export default function Timeline({
 						type="button"
 						onClick={() => zoomView(1.4)}
 						disabled={viewSpan >= duration}
-						className="px-2 py-0.5 rounded bg-cf-panel2 border border-cf-border hover:border-cf-yellow/50 disabled:opacity-40 text-[11px]"
-						title="Zoom Out (Widens timeline view window)"
+						className="px-2 py-1 rounded bg-cf-panel2 border border-cf-border hover:border-cf-yellow/50 active:bg-cf-yellow/10 disabled:opacity-40 text-[11px] font-medium text-cf-text transition-colors cursor-pointer"
+						title="Zoom Out (Widens timeline window)"
 					>
 						− Zoom
 					</button>
@@ -280,8 +329,8 @@ export default function Timeline({
 						<button
 							type="button"
 							onClick={focusClipWindow}
-							className="text-[11px] px-2.5 py-0.5 rounded bg-cf-yellow/15 border border-cf-yellow/40 text-cf-yellow hover:bg-cf-yellow/25 transition-colors font-medium"
-							title="Focus timeline view window around selected clip"
+							className="text-[11px] px-2.5 py-1 rounded bg-cf-yellow/15 border border-cf-yellow/40 text-cf-yellow hover:bg-cf-yellow/25 transition-colors font-medium cursor-pointer"
+							title="Focus view around selected clip"
 						>
 							🎯 Focus Clip
 						</button>
@@ -290,8 +339,9 @@ export default function Timeline({
 					<button
 						type="button"
 						onClick={fullOverview}
-						className="text-[11px] px-2 py-0.5 rounded bg-cf-panel2 border border-cf-border hover:text-cf-yellow"
-						title="View full video length"
+						disabled={viewStart === 0 && viewEnd === duration}
+						className="text-[11px] px-2 py-1 rounded bg-cf-panel2 border border-cf-border hover:text-cf-yellow disabled:opacity-40 transition-colors cursor-pointer"
+						title="View entire video timeline"
 					>
 						Full Overview
 					</button>
@@ -312,7 +362,7 @@ export default function Timeline({
 								style={{ left: `${pct}%` }}
 							>
 								<span className="text-[9px] sm:text-[10px] whitespace-nowrap">
-									{formatTickTime(t, isLongVideo)}
+									{formatTickTime(t)}
 								</span>
 								<div className="w-[1px] h-1.5 bg-cf-border mt-0.5" />
 							</div>
@@ -341,7 +391,7 @@ export default function Timeline({
 									left: `${Math.max(30, Math.min(hoverX, trackRef.current?.clientWidth - 30 || hoverX))}px`,
 								}}
 							>
-								{formatTickTime(hoverTime, isLongVideo)}
+								{formatTickTime(hoverTime)}
 							</div>
 						</>
 					)}
@@ -351,8 +401,8 @@ export default function Timeline({
 						<div
 							className="absolute top-0 bottom-0 border-x-2 border-cf-yellow bg-cf-yellow/20 shadow-inner transition-all"
 							style={{
-								left: `${Math.max(0, pctFor(start))}%`,
-								width: `${Math.min(100, Math.max(0, pctFor(end) - Math.max(0, pctFor(start))))}%`,
+								left: `${Math.max(0, Math.min(100, pctFor(start)))}%`,
+								width: `${Math.max(0, Math.min(100 - Math.max(0, pctFor(start)), pctFor(end) - Math.max(0, pctFor(start))))}%`,
 							}}
 						>
 							<div className="absolute inset-0 flex items-center justify-center pointer-events-none">
@@ -374,32 +424,30 @@ export default function Timeline({
 					)}
 
 					{/* START HANDLE */}
-					{start >= viewStart && start <= viewEnd && (
-						<div
-							onPointerDown={(e) => startDrag("start", e)}
-							className="absolute top-0 bottom-0 w-3 bg-cf-yellow cursor-ew-resize rounded-l flex items-center justify-center touch-none z-20 group hover:brightness-125 shadow-lg"
-							style={{ left: `${pctFor(start)}%` }}
-							title={`Start handle (${formatTickTime(start, isLongVideo)})`}
-						>
-							<div className="w-0.5 h-4 bg-black/60 rounded" />
-						</div>
-					)}
+					<div
+						onPointerDown={(e) => startDrag("start", e)}
+						className="absolute top-0 bottom-0 w-5 -ml-2.5 bg-cf-yellow cursor-ew-resize rounded flex items-center justify-center touch-none z-40 group hover:brightness-125 shadow-xl border border-black/40 transition-transform active:scale-110"
+						style={{
+							left: `${Math.max(0, Math.min(100, pctFor(start)))}%`,
+						}}
+						title={`Start handle (${formatTickTime(start)})`}
+					>
+						<div className="w-0.5 h-4 bg-black/70 rounded" />
+					</div>
 
 					{/* END HANDLE */}
-					{end >= viewStart && end <= viewEnd && (
-						<div
-							onPointerDown={(e) => startDrag("end", e)}
-							className="absolute top-0 bottom-0 w-3 -ml-3 bg-cf-yellow cursor-ew-resize rounded-r flex items-center justify-center touch-none z-20 group hover:brightness-125 shadow-lg"
-							style={{ left: `${pctFor(end)}%` }}
-							title={`End handle (${formatTickTime(end, isLongVideo)})`}
-						>
-							<div className="w-0.5 h-4 bg-black/60 rounded" />
-						</div>
-					)}
+					<div
+						onPointerDown={(e) => startDrag("end", e)}
+						className="absolute top-0 bottom-0 w-5 -ml-2.5 bg-cf-yellow cursor-ew-resize rounded flex items-center justify-center touch-none z-40 group hover:brightness-125 shadow-xl border border-black/40 transition-transform active:scale-110"
+						style={{
+							left: `${Math.max(0, Math.min(100, pctFor(end)))}%`,
+						}}
+						title={`End handle (${formatTickTime(end)})`}
+					>
+						<div className="w-0.5 h-4 bg-black/70 rounded" />
+					</div>
 				</div>
 			</div>
 		</div>
 	);
 }
-
-

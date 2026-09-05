@@ -1,7 +1,8 @@
 import fs from "fs";
 import path from "path";
 
-import store from "../store.js";
+import * as videos from "../../db/videos.js";
+import * as store from "../../db/exports.js";
 import ytdlp from "../ytdlp/client.js";
 import ffmpegSvc from "../ffmpeg/config.js";
 
@@ -72,7 +73,7 @@ async function runExportJob(
         }
 
         const video =
-            store.getVideo(
+            videos.getVideo(
                 exp.videoId
             );
 

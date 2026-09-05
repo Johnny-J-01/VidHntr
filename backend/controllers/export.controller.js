@@ -1,7 +1,8 @@
 import { v4 as uuid } from "uuid";
 import fs from "fs";
 
-import store from "../services/store.js";
+import * as videos from "../db/videos.js";
+import * as store from "../db/exports.js";
 import jobs from "../services/export/processing.js";
 
 const QUALITIES = new Set(["low", "medium", "high", "maximum"]);
@@ -9,7 +10,7 @@ const CROP_MODES = new Set(["fill", "fit"]);
 
 export const createExport = (request, response) => {
     const { videoId, start, end, name, width, height, quality = "high", captions = "off", cropMode = "fill" } = request.body || {};
-    const video = store.getVideo(videoId);
+    const video = videos.getVideo(videoId);
     if (!video) return response.status(404).json({ error: "Video not found." });
 
     const clipStart = Number(start);

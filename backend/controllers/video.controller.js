@@ -3,7 +3,7 @@ import path from "path";
 import { v4 as uuid } from "uuid";
 import fs from "fs";
 
-import store from "../services/store.js";
+import * as store from "../db/videos.js";
 import jobs from "../services/video/processing.js";
 import ytdlp from "../services/ytdlp/client.js";
 import ai from "../services/ai/client.js";

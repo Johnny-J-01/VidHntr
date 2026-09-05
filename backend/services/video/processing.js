@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
-import store from "../store.js";
+import * as store from "../../db/videos.js";
 import ytdlp from "../ytdlp/client.js";
 import ffmpegSvc from "../ffmpeg/config.js";
 import transcription from "../transcription/deepgram.js";

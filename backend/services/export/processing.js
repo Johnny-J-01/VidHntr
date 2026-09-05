@@ -1,10 +1,38 @@
 import fs from "fs";
 import path from "path";
+import { fileURLToPath } from "url";
 
 import * as videos from "../../db/videos.js";
 import * as store from "../../db/exports.js";
 import ytdlp from "../ytdlp/client.js";
 import ffmpegSvc from "../ffmpeg/config.js";
+
+const __filename = fileURLToPath(
+    import.meta.url
+);
+
+const __dirname = path.dirname(
+    __filename
+);
+
+const STORAGE = path.join(
+    __dirname,
+    "..",
+    "..",
+    "storage"
+);
+
+const DIRS = {
+    uploads: path.join(
+        STORAGE,
+        "uploads"
+    ),
+
+    exports: path.join(
+        STORAGE,
+        "exports"
+    ),
+};
 
 function markExportError(
     exportId,

@@ -57,11 +57,11 @@ Object.values(DIRS).forEach(
     }
 );
 
-function markError(
+async function markError(
     videoId,
     message
 ) {
-    store.patchVideo(videoId, {
+    await store.patchVideo(videoId, {
         status: "ERROR",
         progress: 0,
         error: message,
@@ -135,7 +135,7 @@ async function runAudioTranscriptionPipeline(
         )
     );
 
-    store.patchVideo(videoId, {
+    await store.patchVideo(videoId, {
         status: "TRANSCRIBING",
         progress: 20,
         duration,
@@ -150,7 +150,7 @@ async function runAudioTranscriptionPipeline(
         audioPath,
         duration,
         async (pct) => {
-            store.patchVideo(
+            await store.patchVideo(
                 videoId,
                 {
                     progress:
@@ -184,7 +184,7 @@ async function runAudioTranscriptionPipeline(
                 )
             );
 
-            store.patchVideo(
+            await store.patchVideo(
                 videoId,
                 {
                     transcript,
@@ -211,14 +211,14 @@ async function runAudioTranscriptionPipeline(
         )
     );
 
-    store.patchVideo(videoId, {
+    await store.patchVideo(videoId, {
         status: "ANALYZING",
         progress: 85,
         transcript,
         transcriptPath,
     });
 
-    store.patchVideo(videoId, {
+    await store.patchVideo(videoId, {
         status: "READY",
         progress: 100,
         transcript,
@@ -241,7 +241,7 @@ async function runProcessingPipeline(
 ) {
     try {
         const video =
-            store.getVideo(videoId);
+            await store.getVideo(videoId);
 
         if (!video) {
             return;
@@ -258,7 +258,7 @@ async function runProcessingPipeline(
             );
         }
 
-        store.patchVideo(
+        await store.patchVideo(
             videoId,
             {
                 status:
@@ -314,7 +314,7 @@ async function runProcessingPipeline(
             error
         );
 
-        markError(
+        await markError(
             videoId,
             error.message ||
                 "Processing failed."
@@ -327,7 +327,7 @@ async function runYouTubePipeline(
     url
 ) {
     try {
-        store.patchVideo(
+        await store.patchVideo(
             videoId,
             {
                 status: "DOWNLOADING",
@@ -349,7 +349,7 @@ async function runYouTubePipeline(
         } catch {}
 
         if (metadata?.title) {
-            store.patchVideo(
+            await store.patchVideo(
                 videoId,
                 {
                     title:
@@ -366,7 +366,7 @@ async function runYouTubePipeline(
                 )
             )
         ) {
-            store.patchVideo(
+            await store.patchVideo(
                 videoId,
                 {
                     duration:
@@ -382,8 +382,8 @@ async function runYouTubePipeline(
                 url,
                 DIRS.audio,
                 videoId,
-                (progress) => {
-                    store.patchVideo(
+                async (progress) => {
+                    await store.patchVideo(
                         videoId,
                         {
                             progress:
@@ -415,7 +415,7 @@ async function runYouTubePipeline(
         }
 
         const currentVideo =
-            store.getVideo(
+            await store.getVideo(
                 videoId
             );
 
@@ -434,7 +434,7 @@ async function runYouTubePipeline(
             );
         }
 
-        store.patchVideo(
+        await store.patchVideo(
             videoId,
             {
                 sourceType:
@@ -465,7 +465,7 @@ async function runYouTubePipeline(
             error
         );
 
-        markError(
+        await markError(
             videoId,
             error.message ||
                 "We could not process this YouTube video."

@@ -4,6 +4,9 @@ import "dotenv/config";
 
 import videosRouter from "./routes/videos.js";
 import exportsRouter from "./routes/exports.js";
+import googleDriveRouter from "./routes/googleDrive.js";
+
+import { startCleanupScheduler } from "./services/storage/cleanupScheduler.js";
 
 const app = express();
 const PORT = process.env.PORT || 8787;
@@ -18,7 +21,7 @@ app.use((error, request, response, next) => {
         error: error.message || "Something went wrong.",
     });
 });
-
+app.use("/api/google-drive", googleDriveRouter);
 app.use("/api/exports", exportsRouter);
 app.use("/api/videos", videosRouter);
 app.get("/api/health", (request, response) => {
@@ -31,4 +34,5 @@ app.listen(PORT, () => {
     console.log(
         `ClipForge server listening on http://localhost:${PORT}`
     );
+    startCleanupScheduler();
 });

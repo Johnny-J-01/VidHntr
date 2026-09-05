@@ -23,3 +23,5 @@ backend/storage/
 
 backend/bin/
 ffmpeg-*/
+cred
+backend/cred/

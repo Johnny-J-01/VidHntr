@@ -15,7 +15,7 @@ function formatTime(t) {
 }
 
 const VideoPlayer = forwardRef(function VideoPlayer(
-	{ src, captionsOn, onToggleCaptions, transcript = [] },
+	{ src, captionsOn, onToggleCaptions, transcript = [], onTimeUpdate },
 	ref,
 ) {
 	const containerRef = useRef(null);
@@ -70,7 +70,11 @@ const VideoPlayer = forwardRef(function VideoPlayer(
 		const el = ref?.current;
 		if (!el) return undefined;
 
-		const onTime = () => setCurrent(el.currentTime);
+		const onTime = () => {
+			const t = el.currentTime;
+			setCurrent(t);
+			onTimeUpdate?.(t);
+		};
 		const onMeta = () => setDuration(el.duration || 0);
 		const onPlay = () => {
 			setPlaying(true);
@@ -94,7 +98,7 @@ const VideoPlayer = forwardRef(function VideoPlayer(
 			el.removeEventListener("pause", onPause);
 			if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current);
 		};
-	}, [ref, src, playing, showSettings]);
+	}, [ref, src, playing, showSettings, onTimeUpdate]);
 
 	function triggerCenterFlash(type) {
 		setCenterFlash({ type, id: Date.now() });

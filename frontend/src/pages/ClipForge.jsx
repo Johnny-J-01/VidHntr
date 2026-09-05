@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
 
 import { api } from "../services/api.js";
 import { useSearch } from "../hooks/useSearch.js";
@@ -425,6 +426,28 @@ export default function ClipForge() {
 
 	const hasClip = clipEnd > clipStart;
 
+	const handlePlayerTimeUpdate = useCallback(
+		(t) => {
+			setPlayhead(t);
+
+			// Loop playback within selected clip range [clipStart, clipEnd]
+			if (clipEnd > clipStart + 0.2) {
+				if (t >= clipEnd || t < clipStart - 0.5) {
+					if (
+						videoRef.current &&
+						videoRef.current.currentTime !== undefined
+					) {
+						videoRef.current.currentTime = clipStart;
+					}
+					if (video?.sourceType === "youtube") {
+						seekYouTube(clipStart);
+					}
+				}
+			}
+		},
+		[clipStart, clipEnd, video?.sourceType],
+	);
+
 	return (
 		<>
 			<AppShell
@@ -487,13 +510,16 @@ export default function ClipForge() {
 								<VideoPlayer
 									ref={videoRef}
 									src={api.videoFileUrl(video.id)}
-									captionsOn={captions === "burn" || captions === "on"}
+									captionsOn={
+										captions === "burn" || captions === "on"
+									}
 									onToggleCaptions={() =>
 										setCaptions((prev) =>
 											prev === "off" ? "burn" : "off",
 										)
 									}
 									transcript={transcript}
+									onTimeUpdate={handlePlayerTimeUpdate}
 								/>
 							) : isYouTube ? (
 								<div className="aspect-video bg-black rounded overflow-hidden relative">

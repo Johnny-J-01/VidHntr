@@ -118,6 +118,7 @@ export const uploadVideo = (request, response) => {
 			transcript: null,
 			transcriptPath: null,
 			createdAt: Date.now(),
+			expiresAt: Date.now() + 24 * 60 * 60 * 1000,
 		};
 		await store.upsertVideo(video);
 		jobs.runProcessingPipeline(id);
@@ -150,6 +151,7 @@ export const createYouTubeVideo = async (request, response) => {
 		transcript: null,
 		transcriptPath: null,
 		createdAt: Date.now(),
+		expiresAt: Date.now() + 24 * 60 * 60 * 1000,
 	};
 	await store.upsertVideo(video);
 	jobs.runYouTubePipeline(id, url);

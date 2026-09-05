@@ -71,6 +71,7 @@ export const createExport = async (request, response) => {
 		filename: null,
 		error: null,
 		createdAt: Date.now(),
+		expiresAt: Date.now() + 24 * 60 * 60 * 1000,
 	});
 	response.status(202).json({ exportId, status: "queued" });
 	jobs.runExportJob(exportId);

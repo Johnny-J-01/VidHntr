@@ -1,7 +1,21 @@
 import SearchBar from "../search/SearchBar.jsx";
 import MoodChips from "../search/MoodChips.jsx";
+import { useAuth } from "../../auth/AuthContext.jsx";
 
 export default function TopBar({ onSearch, onMood, activeMood, disabled }) {
+	const { user, signOut } = useAuth();
+
+	const handleSignOut = async () => {
+		const { error } = await signOut();
+
+		if (error) {
+			console.error("Sign out failed:", error);
+			return;
+		}
+
+		window.location.href = "/";
+	};
+
 	return (
 		<header className="shrink-0 border-b border-cf-border bg-cf-bg">
 			<div className="px-3 sm:px-4 lg:px-6 py-2.5 sm:py-3">
@@ -33,11 +47,39 @@ export default function TopBar({ onSearch, onMood, activeMood, disabled }) {
 						</div>
 					</div>
 
-					{/* LOGIN / PROFILE */}
-					<div className="flex items-center justify-end pt-1">
-						<div className="w-8 h-8 rounded-full bg-cf-panel2 border border-cf-border flex items-center justify-center text-xs text-cf-muted">
-							K
-						</div>
+					{/* AUTH */}
+					<div className="flex items-center justify-end gap-2 pt-1">
+						{user ? (
+							<button
+								type="button"
+								onClick={handleSignOut}
+								className="cf-btn-ghost h-8 px-3 text-xs font-medium"
+							>
+								Logout
+							</button>
+						) : (
+							<>
+								<button
+									type="button"
+									onClick={() => {
+										window.location.href = "/signin";
+									}}
+									className="cf-btn-ghost h-8 px-3 text-xs font-medium"
+								>
+									Sign In
+								</button>
+
+								<button
+									type="button"
+									onClick={() => {
+										window.location.href = "/signup";
+									}}
+									className="cf-btn-primary h-8 px-3 text-xs"
+								>
+									Sign Up
+								</button>
+							</>
+						)}
 					</div>
 				</div>
 
@@ -56,9 +98,39 @@ export default function TopBar({ onSearch, onMood, activeMood, disabled }) {
 							</span>
 						</div>
 
-						{/* LOGIN / PROFILE */}
-						<div className="w-8 h-8 rounded-full bg-cf-panel2 border border-cf-border flex items-center justify-center text-xs text-cf-muted shrink-0">
-							K
+						{/* AUTH */}
+						<div className="flex items-center gap-2 shrink-0">
+							{user ? (
+								<button
+									type="button"
+									onClick={handleSignOut}
+									className="cf-btn-ghost h-8 px-3 text-xs font-medium"
+								>
+									Logout
+								</button>
+							) : (
+								<>
+									<button
+										type="button"
+										onClick={() => {
+											window.location.href = "/signin";
+										}}
+										className="cf-btn-ghost h-8 px-2.5 text-xs font-medium"
+									>
+										Sign In
+									</button>
+
+									<button
+										type="button"
+										onClick={() => {
+											window.location.href = "/signup";
+										}}
+										className="cf-btn-primary h-8 px-2.5 text-xs"
+									>
+										Sign Up
+									</button>
+								</>
+							)}
 						</div>
 					</div>
 
@@ -82,17 +154,3 @@ export default function TopBar({ onSearch, onMood, activeMood, disabled }) {
 		</header>
 	);
 }
-
-// -------------
-// |           |
-// |           |
-// |           |
-// | --------  |
-// | |      |  |
-// | |      |  |
-// | |      |  |
-// | --------  |
-// |           |
-// |           |
-// |           |
-// -------------

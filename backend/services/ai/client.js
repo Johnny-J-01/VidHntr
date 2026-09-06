@@ -329,10 +329,7 @@ Return at most ${limit} matches.
 If nothing matches, return:
 {"matches":[]}`;
 
-    const matches = [];
-
-    for (const chunk of splitTranscriptForSearch(transcript)) {
-        const userPrompt = `Search request:
+    const userPrompt = `Search request:
 "${query}"
 
 Video duration:
@@ -340,25 +337,25 @@ ${formatSecondsShort(videoDuration)}
 
 Transcript:
 
-${renderTranscriptForPrompt(chunk.transcript, chunk.startIndex)}`;
+${renderTranscriptForPrompt(transcript)}`;
 
-        const parsed = await callModel(client, systemPrompt, userPrompt);
+    const parsed = await callModel(
+        client,
+        systemPrompt,
+        userPrompt
+    );
 
-        if (Array.isArray(parsed.matches)) {
-            matches.push(...parsed.matches);
-        }
-    }
+    const matches = Array.isArray(parsed.matches)
+        ? parsed.matches
+        : [];
 
     return matches
         .filter(
             (match) =>
                 Number.isInteger(match.startIndex) &&
-                Number.isInteger(match.endIndex) &&
-                match.startIndex >= 0 &&
-                match.endIndex >= match.startIndex &&
-                match.startIndex < transcript.length &&
-                match.endIndex < transcript.length
+                Number.isInteger(match.endIndex)
         )
+        .slice(0, limit)
         .map((match, index) => {
             const rawExcerpt = excerptFor(
                 transcript,
@@ -366,8 +363,12 @@ ${renderTranscriptForPrompt(chunk.transcript, chunk.startIndex)}`;
                 match.endIndex
             );
 
-            const start = Number(transcript[match.startIndex].start);
-            const end = Number(transcript[match.endIndex].end);
+            const { start, end } = expandToContextWindow(
+                transcript,
+                match.startIndex,
+                match.endIndex,
+                videoDuration
+            );
 
             return {
                 id: `res_${Date.now()}_${index}`,
@@ -389,8 +390,7 @@ ${renderTranscriptForPrompt(chunk.transcript, chunk.startIndex)}`;
             };
         })
         .filter((result) => result.end > result.start)
-        .sort((a, b) => b.score - a.score || a.start - b.start)
-        .slice(0, limit);
+        .sort((a, b) => b.score - a.score);
 }
 
 const MOOD_QUERIES = {

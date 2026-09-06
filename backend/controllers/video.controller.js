@@ -142,6 +142,7 @@ export const uploadVideo = (request, response) => {
 
 		const video = {
 			id,
+			userId: request.user?.id ?? null,
 			title,
 			sourceType: "upload",
 			sourceUrl: null,
@@ -194,6 +195,7 @@ export const createYouTubeVideo = async (request, response) => {
 
 	const video = {
 		id,
+		userId: request.user?.id ?? null,
 		title: "YouTube video",
 		sourceType: "youtube",
 		sourceUrl: url,

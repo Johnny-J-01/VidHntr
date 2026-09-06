@@ -1,12 +1,27 @@
+import { supabase } from "./supabase.js";
+
 const BASE = "/api";
 
 async function request(path, options = {}) {
+	const { data: authData } = supabase
+		? await supabase.auth.getSession()
+		: { data: null };
+	const headers = new Headers(options.headers);
+
+	if (!(options.body instanceof FormData)) {
+		headers.set("Content-Type", "application/json");
+	}
+
+	if (authData?.session?.access_token) {
+		headers.set(
+			"Authorization",
+			`Bearer ${authData.session.access_token}`,
+		);
+	}
+
   const res = await fetch(`${BASE}${path}`, {
-    headers:
-      options.body instanceof FormData
-        ? undefined
-        : { "Content-Type": "application/json" },
     ...options,
+    headers,
   });
 
   const isJson = res.headers

@@ -482,6 +482,3 @@ const VideoPlayer = forwardRef(function VideoPlayer(
 });
 
 export default VideoPlayer;
-
-
-

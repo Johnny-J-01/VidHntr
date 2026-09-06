@@ -1,9 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 
 import { api } from "../services/api.js";
 import { useSearch } from "../hooks/useSearch.js";
 import { useExport } from "../hooks/useExport.js";
-import { useMemo } from "react";
 import AppShell from "../components/layout/AppShell.jsx";
 import TopBar from "../components/layout/TopBar.jsx";
 import SourcesPanel from "../components/sources/SourcesPanel.jsx";
@@ -419,7 +418,14 @@ export default function ClipForge() {
 			selectVideo(videoId);
 			showToast("Video upload started.");
 		} catch (error) {
-			showToast(error.code === "VIDEO_LIMIT_REACHED" ? error.ownerType === "guest" ? "Max upload limit reached, please login to upload more videos." : "Max videos limit reached, Please delete the uploaded videos to add more" : error.message, "error");
+			showToast(
+				error.code === "VIDEO_LIMIT_REACHED"
+					? error.ownerType === "guest"
+						? "Max upload limit reached, please login to upload more videos."
+						: "Max videos limit reached, Please delete the uploaded videos to add more"
+					: error.message,
+				"error",
+			);
 		}
 	}
 
@@ -431,7 +437,14 @@ export default function ClipForge() {
 			selectVideo(videoId);
 			showToast("YouTube video creation started.");
 		} catch (error) {
-			showToast(error.code === "VIDEO_LIMIT_REACHED" ? error.ownerType === "guest" ? "Max upload limit reached, please login to upload more videos." : "Max videos limit reached, Please delete the uploaded videos to add more" : error.message, "error");
+			showToast(
+				error.code === "VIDEO_LIMIT_REACHED"
+					? error.ownerType === "guest"
+						? "Max upload limit reached, please login to upload more videos."
+						: "Max videos limit reached, Please delete the uploaded videos to add more"
+					: error.message,
+				"error",
+			);
 		}
 	}
 
@@ -440,7 +453,9 @@ export default function ClipForge() {
 		setDeletingVideo(true);
 		try {
 			await api.deleteVideo(videoToDelete.id);
-			setVideos((current) => current.filter((item) => item.id !== videoToDelete.id));
+			setVideos((current) =>
+				current.filter((item) => item.id !== videoToDelete.id),
+			);
 			if (selectedId === videoToDelete.id) selectVideo(null);
 			setVideoToDelete(null);
 			showToast("Video deleted.");
@@ -632,6 +647,7 @@ export default function ClipForge() {
 											prev === "burn" ? "off" : "burn",
 										)
 									}
+									onTimeUpdate={(t) => setPlayhead(t)}
 								/>
 							) : isYouTube ? (
 								<div className="aspect-video bg-black rounded overflow-hidden relative">
@@ -655,10 +671,10 @@ export default function ClipForge() {
 										</div>
 									) : youtubeInfo ? (
 										<>
-										<div
-											ref={youtubeRef}
-											className="w-full h-full"
-										/>
+											<div
+												ref={youtubeRef}
+												className="w-full h-full"
+											/>
 
 											{captions !== "off" && (
 												<div className="absolute bottom-6 left-4 right-4 text-center pointer-events-none z-20">
@@ -864,8 +880,16 @@ export default function ClipForge() {
 				position="top-right"
 				toastOptions={{
 					duration: 4000,
-					style: { background: "#171717", color: "#f4f4f5", border: "1px solid #363636", maxWidth: "min(24rem, calc(100vw - 2rem))", fontSize: "0.8125rem" },
-					success: { iconTheme: { primary: "#facc15", secondary: "#171717" } },
+					style: {
+						background: "#171717",
+						color: "#f4f4f5",
+						border: "1px solid #363636",
+						maxWidth: "min(24rem, calc(100vw - 2rem))",
+						fontSize: "0.8125rem",
+					},
+					success: {
+						iconTheme: { primary: "#facc15", secondary: "#171717" },
+					},
 				}}
 			/>
 			{video && exportOpen && (

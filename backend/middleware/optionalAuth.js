@@ -2,14 +2,17 @@ import { supabase } from "../db/client.js";
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 
 const GUEST_COOKIE = "clipforge_guest";
-const guestSecret = process.env.GUEST_ID_SECRET || process.env.SUPABASE_SECRET_KEY;
+const guestSecret = process.env.GUEST_ID_SECRET || process.env.SUPABASE_SECRET_KEY || "default-secret-key";
 
 function signGuestId(id) {
 	return createHmac("sha256", guestSecret).update(id).digest("base64url");
 }
 
 function readGuestId(request) {
-	const value = (request.get("cookie") || "").split(";").map((part) => part.trim().split("=")).find(([name]) => name === GUEST_COOKIE)?.[1];
+	const value = (request.get("cookie") || "")
+		.split(";")
+		.map((part) => part.trim().split("="))
+		.find(([name]) => name === GUEST_COOKIE)?.[1];
 	if (!value) return null;
 
 	const [id, signature] = value.split(".");
@@ -26,31 +29,35 @@ function ensureGuest(request, response) {
 
 	const id = randomUUID();
 	response.cookie(GUEST_COOKIE, `${id}.${signGuestId(id)}`, {
-		httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production",
-		maxAge: 365 * 24 * 60 * 60 * 1000, path: "/api",
+		httpOnly: true,
+		sameSite: "lax",
+		secure: process.env.NODE_ENV === "production",
+		maxAge: 365 * 24 * 60 * 60 * 1000,
+		path: "/api",
 	});
 	return id;
 }
 
 export async function optionalAuth(request, response, next) {
 	request.user = null;
-	// Keep the signed guest identity available after login. Guest-owned videos are
-	// intentionally not transferred to the authenticated account.
 	request.guestId = ensureGuest(request, response);
 
+	let token = null;
 	const authorization = request.get("authorization");
 
-	if (!authorization) {
+	// Check header first, fallback to query parameter for direct browser downloads
+	if (authorization) {
+		const match = authorization.match(/^Bearer\s+(.+)$/i);
+		if (match) token = match[1];
+	} else if (request.query.token) {
+		token = request.query.token;
+	}
+
+	if (!token) {
 		return next();
 	}
 
-	const match = authorization.match(/^Bearer\s+(.+)$/i);
-
-	if (!match) {
-		return response.status(401).json({ error: "Invalid authorization header." });
-	}
-
-	const { data, error } = await supabase.auth.getUser(match[1]);
+	const { data, error } = await supabase.auth.getUser(token);
 
 	if (error || !data.user) {
 		return response.status(401).json({ error: "Invalid or expired session." });

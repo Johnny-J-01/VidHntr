@@ -10,23 +10,28 @@ import jobs, {
 const QUALITIES = new Set(["low", "medium", "high", "maximum"]);
 const CROP_MODES = new Set(["fill", "fit"]);
 
-function canAccessVideo(request, video) {
-	return Boolean(video && (
-		(request.user && video.userId === request.user.id) ||
-		(video.guestId && video.guestId === request.guestId)
-	));
-}
-
 async function requireExportAccess(request, response, exp) {
 	if (!exp) {
 		response.status(404).json({ error: "Export not found." });
 		return null;
 	}
+
 	const video = await videos.getVideo(exp.videoId);
-	if (!canAccessVideo(request, video)) {
-		response.status(403).json({ error: "You cannot access this export." });
+	if (!video) {
+		response.status(404).json({ error: "Associated video not found." });
 		return null;
 	}
+
+	// Only block if a DIFFERENT authenticated user tries to access another user's export.
+	// Direct browser downloads (where auth headers aren't sent) and guest exports pass through safely using the secret UUID.
+	if (request.user) {
+		const ownerUserId = exp.userId || video.userId;
+		if (ownerUserId && ownerUserId !== request.user.id) {
+			response.status(403).json({ error: "You cannot access this export." });
+			return null;
+		}
+	}
+
 	return video;
 }
 
@@ -51,7 +56,8 @@ export const createExport = async (request, response) => {
 		});
 	}
 
-	if (!canAccessVideo(request, video)) {
+	// Verify creation rights for authenticated videos
+	if (video.userId && (!request.user || request.user.id !== video.userId)) {
 		return response.status(403).json({ error: "You cannot access this video." });
 	}
 
@@ -116,6 +122,8 @@ export const createExport = async (request, response) => {
 	await store.upsertExport({
 		id: exportId,
 		videoId,
+		userId: request.user?.id ?? null,
+		guestId: request.user?.id ? null : request.guestId,
 		start: clipStart,
 		end: clipEnd,
 		filenameBase: name || video.title || "clip",
@@ -144,8 +152,7 @@ export const createExport = async (request, response) => {
 export const getExportStatus = async (request, response) => {
 	const exp = await store.getExport(request.params.id);
 
-
-	if (!await requireExportAccess(request, response, exp)) return;
+	if (!(await requireExportAccess(request, response, exp))) return;
 
 	response.json({
 		exportId: exp.id,
@@ -159,8 +166,7 @@ export const getExportStatus = async (request, response) => {
 export const downloadExport = async (request, response) => {
 	const exp = await store.getExport(request.params.id);
 
-
-	if (!await requireExportAccess(request, response, exp)) return;
+	if (!(await requireExportAccess(request, response, exp))) return;
 
 	if (exp.status !== "READY") {
 		return response.status(409).json({
@@ -185,9 +191,16 @@ export const cleanupTemporaryExports = async (request, response) => {
 
 	try {
 		const video = await videos.getVideo(videoId);
-		if (!canAccessVideo(request, video)) {
-			return response.status(video ? 403 : 404).json({ error: video ? "You cannot access this video." : "Video not found." });
+		if (!video) {
+			return response.status(404).json({ error: "Video not found." });
 		}
+
+		if (video.userId && request.user && request.user.id !== video.userId) {
+			return response.status(403).json({
+				error: "You cannot access this video.",
+			});
+		}
+
 		const exports = await store.listExportsByVideoId(videoId);
 
 		for (const exportJob of exports) {

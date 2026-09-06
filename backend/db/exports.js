@@ -53,6 +53,7 @@ function toExportRecord(row) {
 		id: row.id,
 		videoId: row.video_id,
 		userId: row.user_id,
+		guestId: row.guest_id,
 		start: row.start_time === null ? null : Number(row.start_time),
 		end: row.end_time === null ? null : Number(row.end_time),
 		status: row.status,
@@ -71,6 +72,7 @@ function toSupabaseExport(exportJob) {
 		id: exportJob.id,
 		video_id: exportJob.videoId,
 		user_id: exportJob.userId ?? null,
+		guest_id: exportJob.guestId ?? null,
 		start_time: exportJob.start,
 		end_time: exportJob.end,
 		status: exportJob.status,
@@ -87,6 +89,7 @@ function toSupabasePatch(patch) {
 	const columnByField = {
 		videoId: "video_id",
 		userId: "user_id",
+		guestId: "guest_id",
 		start: "start_time",
 		end: "end_time",
 		status: "status",

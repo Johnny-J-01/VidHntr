@@ -212,6 +212,7 @@ function toSupabaseVideo(video) {
 function toSupabasePatch(patch) {
 	const columnByField = {
 		userId: "user_id",
+		guestId: "guest_id",
 		sourceType: "source_type",
 		sourceUrl: "source_url",
 		filename: "filename",

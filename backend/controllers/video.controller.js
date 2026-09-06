@@ -94,6 +94,30 @@ const upload = multer({
 	},
 });
 
+function canAccessVideo(request, video) {
+	if (!video) return false;
+
+	// Authenticated video: Only the owning user can access
+	if (video.userId) {
+		return Boolean(request.user && request.user.id === video.userId);
+	}
+
+	// Guest video: Viewable by anyone (both guests and logged-in users)
+	return true;
+}
+
+function canDeleteVideo(request, video) {
+	if (!video) return false;
+
+	// Guest uploads cannot be deleted by ANYONE (neither guests nor logged-in users)
+	if (!video.userId) {
+		return false;
+	}
+
+	// Logged-in uploads can ONLY be deleted by their authenticated owner
+	return Boolean(request.user && request.user.id === video.userId);
+}
+
 function publicVideo(video) {
 	if (!video) return null;
 
@@ -113,13 +137,6 @@ function publicVideo(video) {
 	};
 }
 
-function canAccessVideo(request, video) {
-	return Boolean(video && (
-		(request.user && video.userId === request.user.id) ||
-		(video.guestId && video.guestId === request.guestId)
-	));
-}
-
 function requireVideoAccess(request, response, video) {
 	if (!video) {
 		response.status(404).json({ error: "Video not found." });
@@ -134,7 +151,10 @@ function requireVideoAccess(request, response, video) {
 
 function publicVideoForRequest(request, video) {
 	const result = publicVideo(video);
-	return { ...result, canDelete: Boolean(request.user && video.userId === request.user.id) };
+	return {
+		...result,
+		canDelete: canDeleteVideo(request, video),
+	};
 }
 
 function getYouTubeVideoId(url) {
@@ -222,8 +242,6 @@ export const uploadVideo = (request, response) => {
 			title,
 			sourceType: "upload",
 			sourceUrl: null,
-
-			// Original filename is now preserved for Google Drive.
 			filename: request.file.originalname,
 
 			filePath: request.file.path,
@@ -248,8 +266,6 @@ export const uploadVideo = (request, response) => {
 			return response.status(500).json({ error: "Failed to create video." });
 		}
 
-		// Processing intentionally runs asynchronously.
-		// The API immediately returns 202 while the pipeline continues.
 		jobs.runProcessingPipeline(id);
 
 		return response.status(202).json({
@@ -261,7 +277,11 @@ export const uploadVideo = (request, response) => {
 
 export const listVideos = async (request, response) => {
 	const videos = await store.listVideos();
-	response.json(videos.filter((video) => canAccessVideo(request, video)).map((video) => publicVideoForRequest(request, video)));
+	response.json(
+		videos
+			.filter((video) => canAccessVideo(request, video))
+			.map((video) => publicVideoForRequest(request, video)),
+	);
 };
 
 export const deleteVideo = async (request, response) => {
@@ -271,9 +291,7 @@ export const deleteVideo = async (request, response) => {
 		return response.status(404).json({ error: "Video not found." });
 	}
 
-	const authorized = Boolean(request.user && video.userId === request.user.id);
-
-	if (!authorized) {
+	if (!canDeleteVideo(request, video)) {
 		return response.status(403).json({ error: "You cannot delete this video." });
 	}
 

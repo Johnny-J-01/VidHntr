@@ -591,6 +591,7 @@ export default function ClipForge() {
 									ref={videoRef}
 									src={api.videoFileUrl(video.id)}
 									captionsOn={captions === "burn"}
+									transcript={transcript}
 									onToggleCaptions={() =>
 										setCaptions((prev) =>
 											prev === "burn" ? "off" : "burn",

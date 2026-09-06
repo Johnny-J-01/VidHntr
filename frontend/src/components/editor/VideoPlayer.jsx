@@ -38,17 +38,11 @@ const VideoPlayer = forwardRef(function VideoPlayer(
 			return null;
 		}
 
-		// Direct timestamp match
+		// The video element's playback clock is the caption source of truth.
 		const seg = transcript.find(
-			(s) => current >= Number(s.start) && current <= Number(s.end),
+			(s) => current >= Number(s.start) && current < Number(s.end),
 		);
-		if (seg) return seg.text;
-
-		// 0.8s smooth trailing buffer between sentences
-		const recent = transcript.find(
-			(s) => current >= Number(s.end) && current <= Number(s.end) + 0.8,
-		);
-		return recent ? recent.text : null;
+		return seg ? seg.text : null;
 	}, [captionsOn, transcript, current]);
 
 	// Auto-hide controls logic
@@ -87,12 +81,14 @@ const VideoPlayer = forwardRef(function VideoPlayer(
 		};
 
 		el.addEventListener("timeupdate", onTime);
+		el.addEventListener("seeked", onTime);
 		el.addEventListener("loadedmetadata", onMeta);
 		el.addEventListener("play", onPlay);
 		el.addEventListener("pause", onPause);
 
 		return () => {
 			el.removeEventListener("timeupdate", onTime);
+			el.removeEventListener("seeked", onTime);
 			el.removeEventListener("loadedmetadata", onMeta);
 			el.removeEventListener("play", onPlay);
 			el.removeEventListener("pause", onPause);

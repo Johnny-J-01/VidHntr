@@ -6,6 +6,7 @@ import * as store from "../db/videos.js";
 import jobs from "../services/video/processing.js";
 import ytdlp from "../services/ytdlp/client.js";
 import ai from "../services/ai/client.js";
+import { guestVideoExpiresAt } from "../services/video/limits.js";
 
 const ALLOWED_MIME = new Set([
 	"video/mp4",
@@ -15,6 +16,53 @@ const ALLOWED_MIME = new Set([
 ]);
 
 const MAX_SIZE_BYTES = 2 * 1024 * 1024 * 1024;
+
+async function reserveVideo(request, sourceType) {
+	const id = uuid();
+	const createdAt = Date.now();
+	const userId = request.user?.id ?? null;
+	const guestId = userId ? null : request.guestId;
+	const expiresAt = userId ? null : guestVideoExpiresAt(createdAt);
+	const reservation = await store.reserveVideoSlot({
+		id,
+		userId,
+		guestId,
+		sourceType,
+		expiresAt,
+	});
+
+	return { id, userId, guestId, createdAt, expiresAt, ...reservation };
+}
+
+function sendLimitReached(response, reservation) {
+	return response.status(429).json({
+		error: "Video limit reached.",
+		code: "VIDEO_LIMIT_REACHED",
+		ownerType: reservation.userId ? "authenticated" : "guest",
+		limit: reservation.video_limit,
+	});
+}
+
+async function releaseReservation(id) {
+	try {
+		await store.deleteVideo(id);
+	} catch (error) {
+		console.error(`Failed to release video reservation ${id}:`, error);
+	}
+}
+
+export async function reserveUploadVideo(request, response, next) {
+	try {
+		const reservation = await reserveVideo(request, "upload");
+		if (!reservation.allowed) return sendLimitReached(response, reservation);
+
+		request.videoReservation = reservation;
+		request.videoId = reservation.id;
+		return next();
+	} catch (error) {
+		return next(error);
+	}
+}
 
 const upload = multer({
 	storage: multer.diskStorage({
@@ -119,18 +167,20 @@ function getTranscriptOrThrow(video) {
 export const uploadVideo = (request, response) => {
 	upload.single("video")(request, response, async (error) => {
 		if (error) {
+			if (request.videoId) await releaseReservation(request.videoId);
 			return response
 				.status(400)
 				.json({ error: error.message || "Upload failed." });
 		}
 
 		if (!request.file) {
+			await releaseReservation(request.videoId);
 			return response
 				.status(400)
 				.json({ error: "No video file was provided." });
 		}
 
-		const id = request.videoId;
+		const { id, userId, guestId, createdAt, expiresAt } = request.videoReservation;
 
 		const title = (
 			request.body.title ||
@@ -138,11 +188,10 @@ export const uploadVideo = (request, response) => {
 			"Untitled video"
 		).replace(/\.[^/.]+$/, "");
 
-		const createdAt = Date.now();
-
 		const video = {
 			id,
-			userId: request.user?.id ?? null,
+			userId,
+			guestId,
 			title,
 			sourceType: "upload",
 			sourceUrl: null,
@@ -161,10 +210,16 @@ export const uploadVideo = (request, response) => {
 			transcriptPath: null,
 
 			createdAt,
-			expiresAt: createdAt + 24 * 60 * 60 * 1000,
+			expiresAt,
 		};
 
-		await store.upsertVideo(video);
+		try {
+			await store.upsertVideo(video);
+		} catch (storeError) {
+			await releaseReservation(id);
+			console.error(`Failed to create video ${id}:`, storeError);
+			return response.status(500).json({ error: "Failed to create video." });
+		}
 
 		// Processing intentionally runs asynchronously.
 		// The API immediately returns 202 while the pipeline continues.
@@ -189,13 +244,16 @@ export const createYouTubeVideo = async (request, response) => {
 			.json({ error: "That doesn't look like a valid YouTube URL." });
 	}
 
-	const id = uuid();
+	const reservation = await reserveVideo(request, "youtube");
+	if (!reservation.allowed) return sendLimitReached(response, reservation);
+
+	const { id, userId, guestId, createdAt, expiresAt } = reservation;
 	const youtubeId = getYouTubeVideoId(url);
-	const createdAt = Date.now();
 
 	const video = {
 		id,
-		userId: request.user?.id ?? null,
+		userId,
+		guestId,
 		title: "YouTube video",
 		sourceType: "youtube",
 		sourceUrl: url,
@@ -212,10 +270,16 @@ export const createYouTubeVideo = async (request, response) => {
 		transcriptPath: null,
 
 		createdAt,
-		expiresAt: createdAt + 24 * 60 * 60 * 1000,
+		expiresAt,
 	};
 
-	await store.upsertVideo(video);
+	try {
+		await store.upsertVideo(video);
+	} catch (error) {
+		await releaseReservation(id);
+		console.error(`Failed to create video ${id}:`, error);
+		return response.status(500).json({ error: "Failed to create video." });
+	}
 
 	jobs.runYouTubePipeline(id, url);
 

@@ -128,8 +128,9 @@ async function cleanupExpiredVideos() {
 	const { data: videos, error } = await supabase
 		.from("videos")
 		.select(
-			"id, drive_file_id, thumbnail_file_id, transcript_file_id",
+			"id, drive_file_id, drive_folder_id, thumbnail_file_id, transcript_file_id",
 		)
+		.or("guest_id.not.is.null,user_id.is.null")
 		.lte("expires_at", new Date().toISOString());
 
 	if (error) throw error;
@@ -149,6 +150,7 @@ async function cleanupExpiredVideos() {
 			await deleteDriveFile(video.drive_file_id);
 			await deleteDriveFile(video.thumbnail_file_id);
 			await deleteDriveFile(video.transcript_file_id);
+			await deleteDriveFile(video.drive_folder_id);
 
 			deleteLocalVideoFiles(video.id);
 

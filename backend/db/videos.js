@@ -3,11 +3,10 @@ import path from "path";
 import { fileURLToPath } from "url";
 
 import { supabase } from "./client.js";
+import { AUTH_VIDEO_LIMIT, GUEST_VIDEO_LIMIT } from "../services/video/limits.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-const GUEST_DATA_LIFETIME_MS = 24 * 60 * 60 * 1000;
 
 const STORAGE = path.join(__dirname, "..", "storage");
 
@@ -163,6 +162,7 @@ function toVideoRecord(row) {
 	return {
 		id: row.id,
 		userId: row.user_id,
+		guestId: row.guest_id,
 		title: row.title,
 		sourceType: row.source_type,
 		sourceUrl: row.source_url,
@@ -176,6 +176,7 @@ function toVideoRecord(row) {
 		createdAt: toTimestamp(row.created_at),
 		expiresAt: toTimestamp(row.expires_at),
 		driveFileId: row.drive_file_id,
+		driveFolderId: row.drive_folder_id,
 		thumbnailFileId: row.thumbnail_file_id,
 		transcriptFileId: row.transcript_file_id,
 		...runtime,
@@ -188,6 +189,7 @@ function toSupabaseVideo(video) {
 	return {
 		id: video.id,
 		user_id: video.userId ?? null,
+		guest_id: video.guestId ?? null,
 		source_type: video.sourceType,
 		source_url: video.sourceUrl ?? null,
 		filename: video.filename ?? null,
@@ -196,15 +198,14 @@ function toSupabaseVideo(video) {
 		status: video.status,
 		progress: video.progress ?? 0,
 		drive_file_id: video.driveFileId ?? null,
+		drive_folder_id: video.driveFolderId ?? null,
 		thumbnail_file_id: video.thumbnailFileId ?? null,
 		transcript_file_id: video.transcriptFileId ?? null,
 		youtube_id: video.youtubeId ?? null,
 		transcript: video.transcript ?? null,
 		error: video.error ?? null,
 		created_at: toIsoTimestamp(createdAt),
-		expires_at: toIsoTimestamp(
-			video.expiresAt ?? createdAt + GUEST_DATA_LIFETIME_MS,
-		),
+		expires_at: toIsoTimestamp(video.expiresAt ?? null),
 	};
 }
 
@@ -219,6 +220,7 @@ function toSupabasePatch(patch) {
 		status: "status",
 		progress: "progress",
 		driveFileId: "drive_file_id",
+		driveFolderId: "drive_folder_id",
 		thumbnailFileId: "thumbnail_file_id",
 		transcriptFileId: "transcript_file_id",
 		youtubeId: "youtube_id",
@@ -257,6 +259,26 @@ async function upsertVideo(video) {
 	if (error) throw error;
 
 	return toVideoRecord(data);
+}
+
+async function reserveVideoSlot({ id, userId, guestId, sourceType, expiresAt }) {
+	const { data, error } = await supabase.rpc("reserve_video_slot", {
+		p_video_id: id,
+		p_user_id: userId ?? null,
+		p_guest_id: guestId ?? null,
+		p_source_type: sourceType,
+		p_expires_at: toIsoTimestamp(expiresAt),
+		p_guest_limit: GUEST_VIDEO_LIMIT,
+		p_auth_limit: AUTH_VIDEO_LIMIT,
+	});
+
+	if (error) throw error;
+	return data?.[0] || null;
+}
+
+async function deleteVideo(id) {
+	const { error } = await supabase.from("videos").delete().eq("id", id);
+	if (error) throw error;
 }
 
 async function getVideo(id) {
@@ -335,6 +357,8 @@ function clearRuntimeVideo(id) {
 
 export {
 	upsertVideo,
+	reserveVideoSlot,
+	deleteVideo,
 	getVideo,
 	listVideos,
 	patchVideo,

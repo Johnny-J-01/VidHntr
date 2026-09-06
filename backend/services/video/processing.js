@@ -302,6 +302,7 @@ async function runProcessingPipeline(videoId) {
 		console.log(`Source video stored in Google Drive: ${sourceDriveFile.id}`);
 
 		await store.patchVideo(videoId, {
+			driveFolderId: guestVideoFolder.id,
 			driveFileId: sourceDriveFile.id,
 			duration,
 		});

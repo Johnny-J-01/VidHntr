@@ -11,6 +11,7 @@ import {
 	getYouTubeVideo,
 	listVideos,
 	searchVideo,
+	reserveUploadVideo,
 	uploadVideo,
 } from "../controllers/video.controller.js";
 
@@ -18,7 +19,7 @@ const router = express.Router();
 
 router.use(optionalAuth);
 
-router.post("/upload", uploadVideo);
+router.post("/upload", reserveUploadVideo, uploadVideo);
 router.get("/", listVideos);
 router.post("/youtube", createYouTubeVideo);
 router.get("/:id/youtube", getYouTubeVideo);

@@ -17,6 +17,8 @@ import ResultsPanel from "../components/search/ResultsPanel.jsx";
 import SuggestionsPanel from "../components/search/SuggestionsPanel.jsx";
 import ExportButton from "../components/export/ExportButton.jsx";
 import ExportModal from "../components/export/ExportModal.jsx";
+import DeleteVideoModal from "../components/sources/DeleteVideoModal.jsx";
+import { Toaster, toast } from "react-hot-toast";
 
 const TERMINAL = new Set(["READY", "ERROR"]);
 
@@ -50,6 +52,8 @@ export default function ClipForge() {
 
 	const [transcript, setTranscript] = useState([]);
 	const [activeYouTubeCaption, setActiveYouTubeCaption] = useState(null);
+	const [videoToDelete, setVideoToDelete] = useState(null);
+	const [deletingVideo, setDeletingVideo] = useState(false);
 
 	const videoRef = useRef(null);
 	const youtubeRef = useRef(null);
@@ -65,6 +69,12 @@ export default function ClipForge() {
 
 	const suggestions = suggestionsByVideo[selectedId] || [];
 	const isYouTube = video?.sourceType === "youtube";
+
+	function showToast(message, tone = "success") {
+		const options = { id: message };
+		if (tone === "error") toast.error(message, options);
+		else toast.success(message, options);
+	}
 
 	transcriptRef.current = transcript;
 	captionsRef.current = captions;
@@ -247,6 +257,8 @@ export default function ClipForge() {
 			youtubePlayerRef.current = new window.YT.Player(
 				youtubeRef.current,
 				{
+					videoId: youtubeInfo.youtubeId,
+					playerVars: { origin: window.location.origin },
 					events: {
 						onReady: () => {
 							if (cancelled) return;
@@ -400,21 +412,43 @@ export default function ClipForge() {
 	}
 
 	async function handleUpload(file) {
-		const { videoId } = await api.uploadVideo(file, file.name);
-
-		const list = await api.listVideos();
-
-		setVideos(Array.isArray(list) ? list : []);
-		selectVideo(videoId);
+		try {
+			const { videoId } = await api.uploadVideo(file, file.name);
+			const list = await api.listVideos();
+			setVideos(Array.isArray(list) ? list : []);
+			selectVideo(videoId);
+			showToast("Video upload started.");
+		} catch (error) {
+			showToast(error.code === "VIDEO_LIMIT_REACHED" ? error.ownerType === "guest" ? "Max upload limit reached, please login to upload more videos." : "Max videos limit reached, Please delete the uploaded videos to add more" : error.message, "error");
+		}
 	}
 
 	async function handleAddYouTube(url) {
-		const { videoId } = await api.addYouTube(url);
+		try {
+			const { videoId } = await api.addYouTube(url);
+			const list = await api.listVideos();
+			setVideos(Array.isArray(list) ? list : []);
+			selectVideo(videoId);
+			showToast("YouTube video creation started.");
+		} catch (error) {
+			showToast(error.code === "VIDEO_LIMIT_REACHED" ? error.ownerType === "guest" ? "Max upload limit reached, please login to upload more videos." : "Max videos limit reached, Please delete the uploaded videos to add more" : error.message, "error");
+		}
+	}
 
-		const list = await api.listVideos();
-
-		setVideos(Array.isArray(list) ? list : []);
-		selectVideo(videoId);
+	async function confirmDeleteVideo() {
+		if (!videoToDelete) return;
+		setDeletingVideo(true);
+		try {
+			await api.deleteVideo(videoToDelete.id);
+			setVideos((current) => current.filter((item) => item.id !== videoToDelete.id));
+			if (selectedId === videoToDelete.id) selectVideo(null);
+			setVideoToDelete(null);
+			showToast("Video deleted.");
+		} catch (error) {
+			showToast(error.message || "Video deletion failed.", "error");
+		} finally {
+			setDeletingVideo(false);
+		}
 	}
 
 	function applyClip(result) {
@@ -546,6 +580,7 @@ export default function ClipForge() {
 						onSelect={selectVideo}
 						onUpload={handleUpload}
 						onAddYouTube={handleAddYouTube}
+						onDelete={setVideoToDelete}
 						storage={storage}
 					/>
 				}
@@ -589,7 +624,7 @@ export default function ClipForge() {
 							{hasPlayableSource ? (
 								<VideoPlayer
 									ref={videoRef}
-									src={api.videoFileUrl(video.id)}
+									videoId={video.id}
 									captionsOn={captions === "burn"}
 									transcript={transcript}
 									onToggleCaptions={() =>
@@ -620,16 +655,10 @@ export default function ClipForge() {
 										</div>
 									) : youtubeInfo ? (
 										<>
-											<iframe
-												ref={youtubeRef}
-												className="w-full h-full"
-												src={`${youtubeInfo.embedUrl}?enablejsapi=1&origin=${encodeURIComponent(
-													window.location.origin,
-												)}`}
-												title={video.title}
-												allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-												allowFullScreen
-											/>
+										<div
+											ref={youtubeRef}
+											className="w-full h-full"
+										/>
 
 											{captions !== "off" && (
 												<div className="absolute bottom-6 left-4 right-4 text-center pointer-events-none z-20">
@@ -824,6 +853,20 @@ export default function ClipForge() {
 						</div>
 					</aside>
 				}
+			/>
+			<DeleteVideoModal
+				video={videoToDelete}
+				deleting={deletingVideo}
+				onCancel={() => !deletingVideo && setVideoToDelete(null)}
+				onConfirm={confirmDeleteVideo}
+			/>
+			<Toaster
+				position="top-right"
+				toastOptions={{
+					duration: 4000,
+					style: { background: "#171717", color: "#f4f4f5", border: "1px solid #363636", maxWidth: "min(24rem, calc(100vw - 2rem))", fontSize: "0.8125rem" },
+					success: { iconTheme: { primary: "#facc15", secondary: "#171717" } },
+				}}
 			/>
 			{video && exportOpen && (
 				<ExportModal

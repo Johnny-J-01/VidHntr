@@ -1,5 +1,4 @@
 import { useVideoStatus } from "../../hooks/useVideoStatus.js";
-import { api } from "../../services/api.js";
 
 const STATUS_LABEL = {
 	QUEUED: "Queued",
@@ -11,20 +10,24 @@ const STATUS_LABEL = {
 	ERROR: "Error",
 };
 
-export default function VideoListItem({ video, selected, onSelect }) {
+export default function VideoListItem({ video, selected, onSelect, onDelete }) {
 	const { status, progress, error } = useVideoStatus(video.id, video.status);
 	const isBusy = !["READY", "ERROR"].includes(status);
 	const label = STATUS_LABEL[status] || status;
 
 	return (
-		<button
-			onClick={() => onSelect(video.id)}
+		<div
 			className={`w-full text-left flex items-center gap-3 p-2 rounded-cf border transition ${
 				selected
 					? "border-cf-yellow bg-cf-yellowDim"
 					: "border-transparent hover:border-cf-border hover:bg-cf-panel2"
 			}`}
 		>
+			<button
+				type="button"
+				onClick={() => onSelect(video.id)}
+				className="min-w-0 flex flex-1 items-center gap-3 text-left"
+			>
 			<div className="w-14 h-9 rounded-[6px] overflow-hidden bg-cf-panel2 border border-cf-border shrink-0 flex items-center justify-center text-cf-muted text-xs">
 				{video.thumbnailUrl ? (
 					<img
@@ -62,9 +65,22 @@ export default function VideoListItem({ video, selected, onSelect }) {
 					</span>
 				</div>
 			</div>
-			{isBusy && (
-				<span className="text-cf-yellow text-xs shrink-0">◌</span>
+				{isBusy && <span className="text-cf-yellow text-xs shrink-0">◌</span>}
+			</button>
+			{video.ownerType === "guest" && (
+				<span className="shrink-0 rounded border border-cf-border px-1.5 py-0.5 text-[10px] text-cf-muted">Guest</span>
 			)}
-		</button>
+			{video.canDelete && (
+				<button
+				type="button"
+				onClick={() => onDelete(video)}
+				className="shrink-0 rounded p-1 text-cf-muted hover:bg-red-500/10 hover:text-red-400"
+				title={`Delete ${video.title}`}
+				aria-label={`Delete ${video.title}`}
+			>
+				✕
+				</button>
+			)}
+		</div>
 	);
 }

@@ -1,4 +1,5 @@
 import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
+import { api } from "../../services/api.js";
 
 function formatTime(t) {
 	if (!Number.isFinite(t) || t < 0) return "0:00";
@@ -15,7 +16,7 @@ function formatTime(t) {
 }
 
 const VideoPlayer = forwardRef(function VideoPlayer(
-	{ src, captionsOn, onToggleCaptions, transcript = [], onTimeUpdate },
+	{ videoId, captionsOn, onToggleCaptions, transcript = [], onTimeUpdate },
 	ref,
 ) {
 	const containerRef = useRef(null);
@@ -31,6 +32,38 @@ const VideoPlayer = forwardRef(function VideoPlayer(
 
 	const [controlsVisible, setControlsVisible] = useState(true);
 	const [centerFlash, setCenterFlash] = useState(null);
+	const [sourceUrl, setSourceUrl] = useState(null);
+	const [sourceError, setSourceError] = useState(null);
+
+	useEffect(() => {
+		let cancelled = false;
+		let objectUrl = null;
+
+		setSourceUrl(null);
+		setSourceError(null);
+
+		async function loadSource() {
+			try {
+				const file = await api.getVideoFile(videoId);
+				objectUrl = URL.createObjectURL(file);
+
+				if (!cancelled) {
+					setSourceUrl(objectUrl);
+				}
+			} catch (error) {
+				if (!cancelled) {
+					setSourceError(error.message || "Video playback could not be loaded.");
+				}
+			}
+		}
+
+		if (videoId) loadSource();
+
+		return () => {
+			cancelled = true;
+			if (objectUrl) URL.revokeObjectURL(objectUrl);
+		};
+	}, [videoId]);
 
 	// Compute synchronized caption segment for the exact current timestamp
 	const currentCaption = useMemo(() => {
@@ -94,7 +127,7 @@ const VideoPlayer = forwardRef(function VideoPlayer(
 			el.removeEventListener("pause", onPause);
 			if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current);
 		};
-	}, [ref, src, playing, showSettings, onTimeUpdate]);
+	}, [ref, sourceUrl, playing, showSettings, onTimeUpdate]);
 
 	function triggerCenterFlash(type) {
 		setCenterFlash({ type, id: Date.now() });
@@ -233,9 +266,16 @@ const VideoPlayer = forwardRef(function VideoPlayer(
 			>
 				<video
 					ref={ref}
-					src={src}
+					src={sourceUrl || undefined}
+					onError={() => setSourceError("Video playback could not be loaded.")}
 					className="w-full h-full object-contain bg-black"
 				/>
+
+				{sourceError && (
+					<div className="absolute inset-0 flex items-center justify-center px-6 text-center text-xs text-cf-muted">
+						{sourceError}
+					</div>
+				)}
 
 				{/* CENTER PLAY/PAUSE ANIMATED FLASH INDICATOR */}
 				{centerFlash && (

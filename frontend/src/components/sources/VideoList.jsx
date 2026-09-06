@@ -1,6 +1,6 @@
 import VideoListItem from "./VideoListItem.jsx";
 
-export default function VideoList({ videos, selectedId, onSelect }) {
+export default function VideoList({ videos, selectedId, onSelect, onDelete }) {
 	return (
 		<div className="mt-4">
 			<p className="text-[11px] tracking-wide text-cf-muted mb-2 px-1">
@@ -21,6 +21,7 @@ export default function VideoList({ videos, selectedId, onSelect }) {
 						video={v}
 						selected={v.id === selectedId}
 						onSelect={onSelect}
+						onDelete={onDelete}
 					/>
 				))}
 			</div>

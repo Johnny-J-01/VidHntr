@@ -34,12 +34,13 @@ function ensureGuest(request, response) {
 
 export async function optionalAuth(request, response, next) {
 	request.user = null;
-	request.guestId = null;
+	// Keep the signed guest identity available after login. Guest-owned videos are
+	// intentionally not transferred to the authenticated account.
+	request.guestId = ensureGuest(request, response);
 
 	const authorization = request.get("authorization");
 
 	if (!authorization) {
-		request.guestId = ensureGuest(request, response);
 		return next();
 	}
 

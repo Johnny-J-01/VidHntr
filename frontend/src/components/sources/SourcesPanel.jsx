@@ -8,6 +8,7 @@ export default function SourcesPanel({
 	onSelect,
 	onUpload,
 	onAddYouTube,
+	onDelete,
 	storage,
 }) {
 	return (
@@ -36,6 +37,7 @@ export default function SourcesPanel({
 						videos={videos}
 						selectedId={selectedId}
 						onSelect={onSelect}
+						onDelete={onDelete}
 					/>
 				</div>
 			</div>

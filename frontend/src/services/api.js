@@ -32,12 +32,37 @@ async function request(path, options = {}) {
   const data = isJson ? await res.json().catch(() => ({})) : null;
 
   if (!res.ok) {
-    throw new Error(
-      (data && data.error) || `Request failed (${res.status})`,
-    );
+    const error = new Error((data && data.error) || `Request failed (${res.status})`);
+    error.code = data?.code;
+    error.status = res.status;
+		error.ownerType = data?.ownerType;
+    throw error;
   }
 
   return data;
+}
+
+async function requestBlob(path) {
+	const { data: authData } = supabase
+		? await supabase.auth.getSession()
+		: { data: null };
+	const headers = new Headers();
+
+	if (authData?.session?.access_token) {
+		headers.set("Authorization", `Bearer ${authData.session.access_token}`);
+	}
+
+	const response = await fetch(`${BASE}${path}`, {
+		headers,
+		credentials: "include",
+	});
+
+	if (!response.ok) {
+		const data = await response.json().catch(() => ({}));
+		throw new Error(data.error || `Request failed (${response.status})`);
+	}
+
+	return response.blob();
 }
 
 export const api = {
@@ -49,6 +74,8 @@ export const api = {
   getVideoStatus: (id) => request(`/videos/${id}/status`),
 
   getTranscript: (id) => request(`/videos/${id}/transcript`),
+
+  getVideoFile: (id) => requestBlob(`/videos/${id}/file`),
 
   uploadVideo: (file, title) => {
     const form = new FormData();
@@ -70,6 +97,8 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ url }),
     }),
+
+  deleteVideo: (id) => request(`/videos/${id}`, { method: "DELETE" }),
 
   getYouTubeInfo: (id) => request(`/videos/${id}/youtube`),
 

@@ -3,7 +3,7 @@ import path from "path";
 
 import { supabase } from "../../db/client.js";
 import { deleteFile } from "../google/drive.js";
-import { clearRuntimeExport, listExportsByVideoId } from "../../db/exports.js";
+import { clearRuntimeExport, deleteExport, listExportsByVideoId } from "../../db/exports.js";
 import { clearRuntimeVideo } from "../../db/videos.js";
 import { DIRS as VIDEO_DIRS } from "../video/processing.js";
 import { deleteTemporaryExportFiles } from "../export/processing.js";
@@ -130,7 +130,7 @@ async function cleanupExpiredVideos() {
 		.select(
 			"id, drive_file_id, drive_folder_id, thumbnail_file_id, transcript_file_id",
 		)
-		.or("guest_id.not.is.null,user_id.is.null")
+		.not("expires_at", "is", null)
 		.lte("expires_at", new Date().toISOString());
 
 	if (error) throw error;
@@ -139,20 +139,7 @@ async function cleanupExpiredVideos() {
 
 	for (const video of videos || []) {
 		try {
-			const exports = await listExportsByVideoId(video.id);
-
-			for (const exportJob of exports) {
-				deleteTemporaryExportFiles(exportJob.id);
-				await deleteDriveFile(exportJob.driveFileId);
-				clearRuntimeExport(exportJob.id);
-			}
-
-			await deleteDriveFile(video.drive_file_id);
-			await deleteDriveFile(video.thumbnail_file_id);
-			await deleteDriveFile(video.transcript_file_id);
-			await deleteDriveFile(video.drive_folder_id);
-
-			deleteLocalVideoFiles(video.id);
+			await deleteVideoResources(video);
 
 			const { error: deleteError } = await supabase
 				.from("videos")
@@ -176,6 +163,23 @@ async function cleanupExpiredVideos() {
 	}
 
 	return cleaned;
+}
+
+export async function deleteVideoResources(video) {
+	const exports = await listExportsByVideoId(video.id);
+
+	for (const exportJob of exports) {
+		deleteTemporaryExportFiles(exportJob.id);
+		await deleteDriveFile(exportJob.driveFileId);
+		await deleteExport(exportJob.id);
+		clearRuntimeExport(exportJob.id);
+	}
+
+	await deleteDriveFile(video.drive_file_id ?? video.driveFileId);
+	await deleteDriveFile(video.thumbnail_file_id ?? video.thumbnailFileId);
+	await deleteDriveFile(video.transcript_file_id ?? video.transcriptFileId);
+	await deleteDriveFile(video.drive_folder_id ?? video.driveFolderId);
+	deleteLocalVideoFiles(video.id);
 }
 
 export async function cleanupExpiredData() {

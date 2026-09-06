@@ -2,6 +2,7 @@ import express from "express";
 import { optionalAuth } from "../middleware/optionalAuth.js";
 import {
 	createYouTubeVideo,
+	deleteVideo,
 	getVideo,
 	getVideoFile,
 	getVideoStatus,
@@ -22,6 +23,7 @@ router.use(optionalAuth);
 router.post("/upload", reserveUploadVideo, uploadVideo);
 router.get("/", listVideos);
 router.post("/youtube", createYouTubeVideo);
+router.delete("/:id", deleteVideo);
 router.get("/:id/youtube", getYouTubeVideo);
 router.get("/:id/status", getVideoStatus);
 router.get("/:id/transcript", getVideoTranscript);

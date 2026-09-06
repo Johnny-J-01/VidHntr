@@ -151,6 +151,11 @@ async function listExportsByVideoId(videoId) {
 	return (data || []).map(toExportRecord);
 }
 
+async function deleteExport(id) {
+	const { error } = await supabase.from("exports").delete().eq("id", id);
+	if (error) throw error;
+}
+
 async function patchExport(id, patch) {
 	rememberRuntimeFields(id, patch);
 
@@ -180,6 +185,7 @@ export {
 	upsertExport,
 	getExport,
 	listExportsByVideoId,
+	deleteExport,
 	patchExport,
 	clearRuntimeExport,
 };

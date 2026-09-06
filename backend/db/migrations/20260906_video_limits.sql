@@ -10,7 +10,7 @@ create index if not exists videos_guest_active_idx
   where guest_id is not null;
 
 create index if not exists videos_user_active_idx
-  on public.videos (user_id)
+  on public.videos (user_id, expires_at)
   where user_id is not null;
 
 create or replace function public.reserve_video_slot(

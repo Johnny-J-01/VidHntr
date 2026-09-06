@@ -6,7 +6,8 @@ import * as store from "../db/videos.js";
 import jobs from "../services/video/processing.js";
 import ytdlp from "../services/ytdlp/client.js";
 import ai from "../services/ai/client.js";
-import { guestVideoExpiresAt } from "../services/video/limits.js";
+import { authVideoExpiresAt, guestVideoExpiresAt } from "../services/video/limits.js";
+import { deleteVideoResources } from "../services/storage/cleanup.js";
 
 const ALLOWED_MIME = new Set([
 	"video/mp4",
@@ -22,7 +23,7 @@ async function reserveVideo(request, sourceType) {
 	const createdAt = Date.now();
 	const userId = request.user?.id ?? null;
 	const guestId = userId ? null : request.guestId;
-	const expiresAt = userId ? null : guestVideoExpiresAt(createdAt);
+	const expiresAt = userId ? authVideoExpiresAt(createdAt) : guestVideoExpiresAt(createdAt);
 	const reservation = await store.reserveVideoSlot({
 		id,
 		userId,
@@ -107,7 +108,33 @@ function publicVideo(video) {
 		error: video.error || null,
 		createdAt: video.createdAt,
 		expiresAt: video.expiresAt,
+		ownerType: video.userId ? "authenticated" : "guest",
+		canDelete: false,
 	};
+}
+
+function canAccessVideo(request, video) {
+	return Boolean(video && (
+		(request.user && video.userId === request.user.id) ||
+		(video.guestId && video.guestId === request.guestId)
+	));
+}
+
+function requireVideoAccess(request, response, video) {
+	if (!video) {
+		response.status(404).json({ error: "Video not found." });
+		return false;
+	}
+	if (!canAccessVideo(request, video)) {
+		response.status(403).json({ error: "You cannot access this video." });
+		return false;
+	}
+	return true;
+}
+
+function publicVideoForRequest(request, video) {
+	const result = publicVideo(video);
+	return { ...result, canDelete: Boolean(request.user && video.userId === request.user.id) };
 }
 
 function getYouTubeVideoId(url) {
@@ -232,8 +259,34 @@ export const uploadVideo = (request, response) => {
 	});
 };
 
-export const listVideos = async (request, response) =>
-	response.json((await store.listVideos()).map(publicVideo));
+export const listVideos = async (request, response) => {
+	const videos = await store.listVideos();
+	response.json(videos.filter((video) => canAccessVideo(request, video)).map((video) => publicVideoForRequest(request, video)));
+};
+
+export const deleteVideo = async (request, response) => {
+	const video = await store.getVideo(request.params.id);
+
+	if (!video) {
+		return response.status(404).json({ error: "Video not found." });
+	}
+
+	const authorized = Boolean(request.user && video.userId === request.user.id);
+
+	if (!authorized) {
+		return response.status(403).json({ error: "You cannot delete this video." });
+	}
+
+	try {
+		await deleteVideoResources(video);
+		await store.deleteVideo(video.id);
+		store.clearRuntimeVideo(video.id);
+		return response.status(204).end();
+	} catch (error) {
+		console.error(`Failed to delete video ${video.id}:`, error);
+		return response.status(500).json({ error: "Video deletion failed." });
+	}
+};
 
 export const createYouTubeVideo = async (request, response) => {
 	const { url } = request.body || {};
@@ -292,9 +345,7 @@ export const createYouTubeVideo = async (request, response) => {
 export const getYouTubeVideo = async (request, response) => {
 	const video = await store.getVideo(request.params.id);
 
-	if (!video) {
-		return response.status(404).json({ error: "Video not found." });
-	}
+	if (!requireVideoAccess(request, response, video)) return;
 
 	if (video.sourceType !== "youtube") {
 		return response
@@ -322,9 +373,7 @@ export const getYouTubeVideo = async (request, response) => {
 export const getVideoStatus = async (request, response) => {
 	const video = await store.getVideo(request.params.id);
 
-	if (!video) {
-		return response.status(404).json({ error: "Video not found." });
-	}
+	if (!requireVideoAccess(request, response, video)) return;
 
 	return response.json({
 		status: video.status,
@@ -336,9 +385,7 @@ export const getVideoStatus = async (request, response) => {
 export const getVideoTranscript = async (request, response) => {
 	const video = await store.getVideo(request.params.id);
 
-	if (!video) {
-		return response.status(404).json({ error: "Video not found." });
-	}
+	if (!requireVideoAccess(request, response, video)) return;
 
 	try {
 		const transcript = getTranscriptOrThrow(video);
@@ -357,7 +404,9 @@ export const getVideoTranscript = async (request, response) => {
 export const getVideoFile = async (request, response) => {
 	const video = await store.getVideo(request.params.id);
 
-	if (!video || !video.filePath) {
+	if (!requireVideoAccess(request, response, video)) return;
+
+	if (!video.filePath) {
 		return response.status(404).json({
 			error: "Video file not found.",
 		});
@@ -369,7 +418,9 @@ export const getVideoFile = async (request, response) => {
 export const getVideoThumbnail = async (request, response) => {
 	const video = await store.getVideo(request.params.id);
 
-	if (!video || !video.thumbnailPath) {
+	if (!requireVideoAccess(request, response, video)) return;
+
+	if (!video.thumbnailPath) {
 		return response.status(404).end();
 	}
 
@@ -379,9 +430,7 @@ export const getVideoThumbnail = async (request, response) => {
 export const searchVideo = async (request, response) => {
 	const video = await store.getVideo(request.params.id);
 
-	if (!video) {
-		return response.status(404).json({ error: "Video not found." });
-	}
+	if (!requireVideoAccess(request, response, video)) return;
 
 	try {
 		const transcript = getTranscriptOrThrow(video);
@@ -426,9 +475,7 @@ export const searchVideo = async (request, response) => {
 export const getVideoSuggestions = async (request, response) => {
 	const video = await store.getVideo(request.params.id);
 
-	if (!video) {
-		return response.status(404).json({ error: "Video not found." });
-	}
+	if (!requireVideoAccess(request, response, video)) return;
 
 	try {
 		const transcript = getTranscriptOrThrow(video);
@@ -454,9 +501,7 @@ export const getVideoSuggestions = async (request, response) => {
 export const getVideo = async (request, response) => {
 	const video = await store.getVideo(request.params.id);
 
-	if (!video) {
-		return response.status(404).json({ error: "Video not found." });
-	}
+	if (!requireVideoAccess(request, response, video)) return;
 
-	return response.json(publicVideo(video));
+	return response.json(publicVideoForRequest(request, video));
 };

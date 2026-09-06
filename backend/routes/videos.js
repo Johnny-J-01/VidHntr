@@ -1,16 +1,16 @@
 import express from "express";
 import {
-    createYouTubeVideo,
-    getVideo,
-    getVideoFile,
-    getVideoStatus,
-    getVideoSuggestions,
-    getVideoThumbnail,
-    getVideoTranscript,
-    getYouTubeVideo,
-    listVideos,
-    searchVideo,
-    uploadVideo,
+	createYouTubeVideo,
+	getVideo,
+	getVideoFile,
+	getVideoStatus,
+	getVideoSuggestions,
+	getVideoThumbnail,
+	getVideoTranscript,
+	getYouTubeVideo,
+	listVideos,
+	searchVideo,
+	uploadVideo,
 } from "../controllers/video.controller.js";
 
 const router = express.Router();

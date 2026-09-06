@@ -3,7 +3,9 @@ import fs from "fs";
 
 import * as videos from "../db/videos.js";
 import * as store from "../db/exports.js";
-import jobs from "../services/export/processing.js";
+import jobs, {
+	deleteTemporaryExportFiles,
+} from "../services/export/processing.js";
 
 const QUALITIES = new Set(["low", "medium", "high", "maximum"]);
 const CROP_MODES = new Set(["fill", "fit"]);
@@ -20,40 +22,73 @@ export const createExport = async (request, response) => {
 		captions = "off",
 		cropMode = "fill",
 	} = request.body || {};
+
 	const video = await videos.getVideo(videoId);
-	if (!video) return response.status(404).json({ error: "Video not found." });
+
+	if (!video) {
+		return response.status(404).json({
+			error: "Video not found.",
+		});
+	}
 
 	const clipStart = Number(start);
 	const clipEnd = Number(end);
 	const outputWidth = Number(width);
 	const outputHeight = Number(height);
+
 	if (
 		!Number.isFinite(clipStart) ||
 		!Number.isFinite(clipEnd) ||
 		clipEnd <= clipStart
-	)
-		return response.status(400).json({ error: "Invalid clip range." });
+	) {
+		return response.status(400).json({
+			error: "Invalid clip range.",
+		});
+	}
+
 	if (
 		!Number.isInteger(outputWidth) ||
 		outputWidth <= 0 ||
 		!Number.isInteger(outputHeight) ||
 		outputHeight <= 0
-	)
-		return response
-			.status(400)
-			.json({ error: "Invalid export dimensions." });
-	if (!QUALITIES.has(quality))
-		return response.status(400).json({ error: "Invalid export quality." });
-	if (captions !== "off" && captions !== "burn")
-		return response.status(400).json({ error: "Invalid captions mode." });
-	if (!CROP_MODES.has(cropMode))
-		return response.status(400).json({ error: "Invalid crop mode." });
-	if (video.duration && clipEnd > Number(video.duration))
-		return response
-			.status(400)
-			.json({ error: "Clip end exceeds video duration." });
+	) {
+		return response.status(400).json({
+			error: "Invalid export dimensions.",
+		});
+	}
+
+	if (!QUALITIES.has(quality)) {
+		return response.status(400).json({
+			error: "Invalid export quality.",
+		});
+	}
+
+	if (captions !== "off" && captions !== "burn") {
+		return response.status(400).json({
+			error: "Invalid captions mode.",
+		});
+	}
+
+	if (!CROP_MODES.has(cropMode)) {
+		return response.status(400).json({
+			error: "Invalid crop mode.",
+		});
+	}
+
+	if (video.duration && clipEnd > Number(video.duration)) {
+		return response.status(400).json({
+			error: "Clip end exceeds video duration.",
+		});
+	}
+
+	if (video.status !== "READY") {
+		return response.status(409).json({
+			error: "This video is not ready for export yet.",
+		});
+	}
 
 	const exportId = uuid();
+
 	await store.upsertExport({
 		id: exportId,
 		videoId,
@@ -71,15 +106,26 @@ export const createExport = async (request, response) => {
 		filename: null,
 		error: null,
 		createdAt: Date.now(),
-		expiresAt: Date.now() + 24 * 60 * 60 * 1000,
+		expiresAt: video.expiresAt || Date.now() + 24 * 60 * 60 * 1000,
 	});
-	response.status(202).json({ exportId, status: "queued" });
+
+	response.status(202).json({
+		exportId,
+		status: "queued",
+	});
+
 	jobs.runExportJob(exportId);
 };
 
 export const getExportStatus = async (request, response) => {
 	const exp = await store.getExport(request.params.id);
-	if (!exp) return response.status(404).json({ error: "Export not found." });
+
+	if (!exp) {
+		return response.status(404).json({
+			error: "Export not found.",
+		});
+	}
+
 	response.json({
 		exportId: exp.id,
 		status: exp.status,
@@ -91,10 +137,61 @@ export const getExportStatus = async (request, response) => {
 
 export const downloadExport = async (request, response) => {
 	const exp = await store.getExport(request.params.id);
-	if (!exp) return response.status(404).json({ error: "Export not found." });
-	if (exp.status !== "READY")
-		return response.status(409).json({ error: "Export is not ready yet." });
-	if (!exp.outputPath || !fs.existsSync(exp.outputPath))
-		return response.status(404).json({ error: "Export file not found." });
-	response.download(exp.outputPath, exp.filename || "clip.mp4");
+
+	if (!exp) {
+		return response.status(404).json({
+			error: "Export not found.",
+		});
+	}
+
+	if (exp.status !== "READY") {
+		return response.status(409).json({
+			error: "Export is not ready yet.",
+		});
+	}
+
+	if (!exp.outputPath || !fs.existsSync(exp.outputPath)) {
+		return response.status(404).json({
+			error: "Export file not found.",
+		});
+	}
+
+	response.download(
+		exp.outputPath,
+		exp.filename || "clip.mp4",
+	);
+};
+
+export const cleanupTemporaryExports = async (request, response) => {
+	const { videoId } = request.params;
+
+	try {
+		const exports = await store.listExportsByVideoId(videoId);
+
+		for (const exportJob of exports) {
+			await store.patchExport(exportJob.id, {
+				status: "CLOSED",
+				outputPath: null,
+			});
+
+			deleteTemporaryExportFiles(exportJob.id);
+
+			store.clearRuntimeExport(exportJob.id);
+		}
+
+		return response.json({
+			success: true,
+			cleaned: exports.length,
+		});
+	} catch (error) {
+		console.error(
+			`Failed to clean temporary exports for video ${videoId}:`,
+			error,
+		);
+
+		return response.status(500).json({
+			success: false,
+			error: "Failed to clean temporary export files.",
+		});
+	}
 };

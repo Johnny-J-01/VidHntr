@@ -2,12 +2,20 @@ import { cleanupExpiredData } from "./cleanup.js";
 
 const CLEANUP_INTERVAL_MS = 15 * 60 * 1000;
 
+async function runCleanup() {
+	try {
+		await cleanupExpiredData();
+	} catch (error) {
+		console.error("Scheduled storage cleanup failed:", error);
+	}
+}
+
 export function startCleanupScheduler() {
-    cleanupExpiredData();
+	runCleanup();
 
-    setInterval(() => {
-        cleanupExpiredData();
-    }, CLEANUP_INTERVAL_MS);
+	setInterval(() => {
+		runCleanup();
+	}, CLEANUP_INTERVAL_MS);
 
-    console.log("Storage cleanup scheduler started");
+	console.log("Storage cleanup scheduler started");
 }

@@ -1,6 +1,7 @@
 import { supabase } from "./client.js";
 
 const GUEST_DATA_LIFETIME_MS = 24 * 60 * 60 * 1000;
+
 const RUNTIME_FIELDS = [
 	"filenameBase",
 	"width",
@@ -12,6 +13,7 @@ const RUNTIME_FIELDS = [
 	"outputPath",
 	"error",
 ];
+
 const runtimeExports = new Map();
 
 function hasOwn(object, property) {
@@ -20,25 +22,33 @@ function hasOwn(object, property) {
 
 function toTimestamp(value) {
 	if (typeof value === "number" && Number.isFinite(value)) return value;
+
 	const timestamp = Date.parse(value);
+
 	return Number.isFinite(timestamp) ? timestamp : null;
 }
 
 function toIsoTimestamp(value) {
 	const timestamp = toTimestamp(value);
+
 	return timestamp === null ? null : new Date(timestamp).toISOString();
 }
 
 function rememberRuntimeFields(id, exportJob) {
 	const next = { ...(runtimeExports.get(id) || {}) };
+
 	for (const field of RUNTIME_FIELDS) {
-		if (hasOwn(exportJob, field)) next[field] = exportJob[field];
+		if (hasOwn(exportJob, field)) {
+			next[field] = exportJob[field];
+		}
 	}
+
 	runtimeExports.set(id, next);
 }
 
 function toExportRecord(row) {
 	if (!row) return null;
+
 	return {
 		id: row.id,
 		videoId: row.video_id,
@@ -56,6 +66,7 @@ function toExportRecord(row) {
 
 function toSupabaseExport(exportJob) {
 	const createdAt = toTimestamp(exportJob.createdAt) ?? Date.now();
+
 	return {
 		id: exportJob.id,
 		video_id: exportJob.videoId,
@@ -82,25 +93,37 @@ function toSupabasePatch(patch) {
 		driveFileId: "drive_file_id",
 		filename: "filename",
 	};
+
 	const update = {};
+
 	for (const [field, column] of Object.entries(columnByField)) {
-		if (hasOwn(patch, field)) update[column] = patch[field];
+		if (hasOwn(patch, field)) {
+			update[column] = patch[field];
+		}
 	}
-	if (hasOwn(patch, "createdAt"))
+
+	if (hasOwn(patch, "createdAt")) {
 		update.created_at = toIsoTimestamp(patch.createdAt);
-	if (hasOwn(patch, "expiresAt"))
+	}
+
+	if (hasOwn(patch, "expiresAt")) {
 		update.expires_at = toIsoTimestamp(patch.expiresAt);
+	}
+
 	return update;
 }
 
 async function upsertExport(exportJob) {
 	rememberRuntimeFields(exportJob.id, exportJob);
+
 	const { data, error } = await supabase
 		.from("exports")
 		.upsert(toSupabaseExport(exportJob))
 		.select()
 		.single();
+
 	if (error) throw error;
+
 	return toExportRecord(data);
 }
 
@@ -110,22 +133,53 @@ async function getExport(id) {
 		.select()
 		.eq("id", id)
 		.maybeSingle();
+
 	if (error) throw error;
+
 	return toExportRecord(data);
+}
+
+async function listExportsByVideoId(videoId) {
+	const { data, error } = await supabase
+		.from("exports")
+		.select()
+		.eq("video_id", videoId)
+		.order("created_at", { ascending: false });
+
+	if (error) throw error;
+
+	return (data || []).map(toExportRecord);
 }
 
 async function patchExport(id, patch) {
 	rememberRuntimeFields(id, patch);
+
 	const update = toSupabasePatch(patch);
-	if (Object.keys(update).length === 0) return getExport(id);
+
+	if (Object.keys(update).length === 0) {
+		return getExport(id);
+	}
+
 	const { data, error } = await supabase
 		.from("exports")
 		.update(update)
 		.eq("id", id)
 		.select()
 		.maybeSingle();
+
 	if (error) throw error;
+
 	return toExportRecord(data);
 }
 
-export { upsertExport, getExport, patchExport };
+function clearRuntimeExport(id) {
+	runtimeExports.delete(id);
+}
+
+export {
+	upsertExport,
+	getExport,
+	listExportsByVideoId,
+	patchExport,
+	clearRuntimeExport,
+};

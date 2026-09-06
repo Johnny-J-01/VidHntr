@@ -6,642 +6,398 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const FFMPEG_DIR = path.join(
-    __dirname,
-    "..",
-    "..",
-    "..",
-    "ffmpeg-9.0.1-essentials_build",
-    "bin"
-);
+const FFMPEG_DIR = path.join(__dirname, "..", "..", "..", "ffmpeg-9.0.1-essentials_build", "bin");
 
-const YOUTUBE_URL_RE =
-    /^(https?:\/\/)?(www\.)?(youtube\.com\/(watch\?v=|shorts\/)|youtu\.be\/)[\w-]+/i;
+const YOUTUBE_URL_RE = /^(https?:\/\/)?(www\.)?(youtube\.com\/(watch\?v=|shorts\/)|youtu\.be\/)[\w-]+/i;
 
 function resolveYtDlpPath() {
-    if (
-        process.env.YTDLP_PATH &&
-        fs.existsSync(process.env.YTDLP_PATH)
-    ) {
-        return process.env.YTDLP_PATH;
-    }
+	if (process.env.YTDLP_PATH && fs.existsSync(process.env.YTDLP_PATH)) {
+		return process.env.YTDLP_PATH;
+	}
 
-    const binDir = path.join(
-        __dirname,
-        "..",
-        "..",
-        "bin"
-    );
+	const binDir = path.join(__dirname, "..", "..", "bin");
 
-    const candidates =
-        process.platform === "win32"
-            ? [
-                  path.join(
-                      binDir,
-                      "yt-dlp.exe"
-                  ),
-              ]
-            : [
-                  path.join(
-                      binDir,
-                      "yt-dlp"
-                  ),
-                  path.join(
-                      binDir,
-                      "yt-dlp.exe"
-                  ),
-              ];
+	const candidates = process.platform === "win32"
+		? [path.join(binDir, "yt-dlp.exe")]
+		: [path.join(binDir, "yt-dlp"), path.join(binDir, "yt-dlp.exe")];
 
-    for (const candidate of candidates) {
-        if (fs.existsSync(candidate)) {
-            return candidate;
-        }
-    }
+	for (const candidate of candidates) {
+		if (fs.existsSync(candidate)) {
+			return candidate;
+		}
+	}
 
-    return "yt-dlp";
+	return "yt-dlp";
 }
 
 function isValidYouTubeUrl(url) {
-    return (
-        typeof url === "string" &&
-        YOUTUBE_URL_RE.test(url.trim())
-    );
+	return typeof url === "string" && YOUTUBE_URL_RE.test(url.trim());
 }
 
-function downloadYouTubeAudio(
-    url,
-    outputDir,
-    id,
-    onProgress
-) {
-    return new Promise(
-        (resolve, reject) => {
-            fs.mkdirSync(outputDir, {
-                recursive: true,
-            });
+function downloadYouTubeAudio(url, outputDir, id, onProgress) {
+	return new Promise((resolve, reject) => {
+		fs.mkdirSync(outputDir, { recursive: true });
 
-            const outputTemplate =
-                path.join(
-                    outputDir,
-                    `${id}.%(ext)s`
-                );
+		const outputTemplate = path.join(outputDir, `${id}.%(ext)s`);
 
-            const args = [
-                url,
-                "-f",
-                "bestaudio/best",
-                "-x",
-                "--audio-format",
-                "mp3",
-                "--audio-quality",
-                "32K",
-                "--postprocessor-args",
-                "ffmpeg:-ar 16000 -ac 1",
-                "--ffmpeg-location",
-                FFMPEG_DIR,
-                "-o",
-                outputTemplate,
-                "--no-playlist",
-                "--print",
-                "after_move:filepath",
-                "--newline",
-            ];
+		const args = [
+			url,
+			"-f",
+			"bestaudio/best",
+			"-x",
+			"--audio-format",
+			"mp3",
+			"--audio-quality",
+			"32K",
+			"--postprocessor-args",
+			"ffmpeg:-ar 16000 -ac 1",
+			"--ffmpeg-location",
+			FFMPEG_DIR,
+			"-o",
+			outputTemplate,
+			"--no-playlist",
+			"--print",
+			"after_move:filepath",
+			"--newline",
+		];
 
-            const proc = spawn(
-                resolveYtDlpPath(),
-                args,
-                {
-                    windowsHide: true,
-                }
-            );
+		const proc = spawn(resolveYtDlpPath(), args, { windowsHide: true });
 
-            let resolvedPath = null;
-            let stderrBuf = "";
+		let resolvedPath = null;
+		let stderrBuf = "";
 
-            proc.stdout.on(
-                "data",
-                (chunk) => {
-                    const text =
-                        chunk.toString();
+		proc.stdout.on("data", (chunk) => {
+			const text = chunk.toString();
 
-                    const progressMatch =
-                        text.match(
-                            /\[download\]\s+(\d{1,3}(?:\.\d+)?)%/
-                        );
+			const progressMatch = text.match(/\[download\]\s+(\d{1,3}(?:\.\d+)?)%/);
 
-                    if (
-                        progressMatch &&
-                        onProgress
-                    ) {
-                        onProgress(
-                            Math.min(
-                                99,
-                                Math.round(
-                                    parseFloat(
-                                        progressMatch[1]
-                                    )
-                                )
-                            )
-                        );
-                    }
+			if (progressMatch && onProgress) {
+				onProgress(Math.min(99, Math.round(parseFloat(progressMatch[1]))));
+			}
 
-                    const lines = text
-                        .split(/\r?\n/)
-                        .map((line) =>
-                            line.trim()
-                        )
-                        .filter(Boolean);
+			const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
 
-                    for (const line of lines) {
-                        if (
-                            line
-                                .toLowerCase()
-                                .endsWith(".mp3") &&
-                            !line.startsWith("[")
-                        ) {
-                            resolvedPath =
-                                line;
-                        }
-                    }
-                }
-            );
+			for (const line of lines) {
+				if (line.toLowerCase().endsWith(".mp3") && !line.startsWith("[")) {
+					resolvedPath = line;
+				}
+			}
+		});
 
-            proc.stderr.on(
-                "data",
-                (chunk) => {
-                    stderrBuf += chunk.toString();
-                }
-            );
+		proc.stderr.on("data", (chunk) => {
+			stderrBuf += chunk.toString();
+		});
 
-            proc.on(
-                "error",
-                (error) => {
-                    reject(
-                        new Error(
-                            `yt-dlp failed to start: ${error.message}`
-                        )
-                    );
-                }
-            );
+		proc.on("error", (error) => {
+			reject(new Error(`yt-dlp failed to start: ${error.message}`));
+		});
 
-            proc.on(
-                "close",
-                (code) => {
-                    if (code !== 0) {
-                        reject(
-                            new Error(
-                                `yt-dlp audio download failed.\n${stderrBuf}`
-                            )
-                        );
-                        return;
-                    }
+		proc.on("close", (code) => {
+			if (code !== 0) {
+				reject(new Error(`yt-dlp audio download failed.\n${stderrBuf}`));
+				return;
+			}
 
-                    if (onProgress) {
-                        onProgress(100);
-                    }
+			if (onProgress) {
+				onProgress(100);
+			}
 
-                    resolve({
-                        filePath:
-                            resolvedPath ||
-                            path.join(
-                                outputDir,
-                                `${id}.mp3`
-                            ),
-                    });
-                }
-            );
-        }
-    );
+			resolve({
+				filePath: resolvedPath || path.join(outputDir, `${id}.mp3`),
+			});
+		});
+	});
 }
 
-function downloadYouTubeVideo(
-    url,
-    outputDir,
-    id,
-    onProgress
-) {
-    return new Promise(
-        (resolve, reject) => {
-            fs.mkdirSync(outputDir, {
-                recursive: true,
-            });
+function downloadYouTubeVideo(url, outputDir, id, onProgress) {
+	return new Promise((resolve, reject) => {
+		fs.mkdirSync(outputDir, { recursive: true });
 
-            const outputTemplate =
-                path.join(
-                    outputDir,
-                    `${id}.%(ext)s`
-                );
+		const outputTemplate = path.join(outputDir, `${id}.%(ext)s`);
 
-            const args = [
-                url,
-                "-f",
-                "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/b",
-                "--merge-output-format",
-                "mp4",
-                "--ffmpeg-location",
-                FFMPEG_DIR,
-                "-o",
-                outputTemplate,
-                "--no-playlist",
-                "--print",
-                "after_move:filepath",
-                "--newline",
-            ];
+		const args = [
+			url,
+			"-f",
+			"bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/b",
+			"--merge-output-format",
+			"mp4",
+			"--ffmpeg-location",
+			FFMPEG_DIR,
+			"-o",
+			outputTemplate,
+			"--no-playlist",
+			"--print",
+			"after_move:filepath",
+			"--newline",
+		];
 
-            const proc = spawn(
-                resolveYtDlpPath(),
-                args,
-                {
-                    windowsHide: true,
-                }
-            );
+		const proc = spawn(resolveYtDlpPath(), args, { windowsHide: true });
 
-            let resolvedPath = null;
-            let stderrBuf = "";
+		let resolvedPath = null;
+		let stderrBuf = "";
 
-            proc.stdout.on(
-                "data",
-                (chunk) => {
-                    const text =
-                        chunk.toString();
+		proc.stdout.on("data", (chunk) => {
+			const text = chunk.toString();
 
-                    const progressMatch =
-                        text.match(
-                            /\[download\]\s+(\d{1,3}(?:\.\d+)?)%/
-                        );
+			const progressMatch = text.match(/\[download\]\s+(\d{1,3}(?:\.\d+)?)%/);
 
-                    if (
-                        progressMatch &&
-                        onProgress
-                    ) {
-                        onProgress(
-                            Math.min(
-                                99,
-                                Math.round(
-                                    parseFloat(
-                                        progressMatch[1]
-                                    )
-                                )
-                            )
-                        );
-                    }
+			if (progressMatch && onProgress) {
+				onProgress(Math.min(99, Math.round(parseFloat(progressMatch[1]))));
+			}
 
-                    const lines = text
-                        .split(/\r?\n/)
-                        .map((line) =>
-                            line.trim()
-                        )
-                        .filter(Boolean);
+			const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
 
-                    for (const line of lines) {
-                        if (
-                            line
-                                .toLowerCase()
-                                .endsWith(".mp4") &&
-                            !line.startsWith("[")
-                        ) {
-                            resolvedPath =
-                                line;
-                        }
-                    }
-                }
-            );
+			for (const line of lines) {
+				if (line.toLowerCase().endsWith(".mp4") && !line.startsWith("[")) {
+					resolvedPath = line;
+				}
+			}
+		});
 
-            proc.stderr.on(
-                "data",
-                (chunk) => {
-                    stderrBuf += chunk.toString();
-                }
-            );
+		proc.stderr.on("data", (chunk) => {
+			stderrBuf += chunk.toString();
+		});
 
-            proc.on(
-                "error",
-                (error) => {
-                    reject(
-                        new Error(
-                            `yt-dlp failed to start: ${error.message}`
-                        )
-                    );
-                }
-            );
+		proc.on("error", (error) => {
+			reject(new Error(`yt-dlp failed to start: ${error.message}`));
+		});
 
-            proc.on(
-                "close",
-                (code) => {
-                    if (code !== 0) {
-                        reject(
-                            new Error(
-                                `YouTube video download failed.\n${stderrBuf}`
-                            )
-                        );
-                        return;
-                    }
+		proc.on("close", (code) => {
+			if (code !== 0) {
+				reject(new Error(`YouTube video download failed.\n${stderrBuf}`));
+				return;
+			}
 
-                    if (onProgress) {
-                        onProgress(100);
-                    }
+			if (onProgress) {
+				onProgress(100);
+			}
 
-                    resolve({
-                        filePath:
-                            resolvedPath ||
-                            path.join(
-                                outputDir,
-                                `${id}.mp4`
-                            ),
-                    });
-                }
-            );
-        }
-    );
+			resolve({
+				filePath: resolvedPath || path.join(outputDir, `${id}.mp4`),
+			});
+		});
+	});
 }
 
-function downloadYouTubeVideoSection(
-    url,
-    outputDir,
-    id,
-    start,
-    end,
-    onProgress
-) {
-    return new Promise(
-        (resolve, reject) => {
-            fs.mkdirSync(outputDir, {
-                recursive: true,
-            });
+function downloadYouTubeVideoSection(url, outputDir, id, start, end, onProgress) {
+	return new Promise((resolve, reject) => {
+		fs.mkdirSync(outputDir, { recursive: true });
 
-            const sectionStart = Math.max(
-                0,
-                Number(start) || 0
-            );
+		const sectionStart = Math.max(0, Number(start) || 0);
+		const sectionEnd = Number(end);
 
-            const sectionEnd = Number(end);
+		if (!Number.isFinite(sectionEnd) || sectionEnd <= sectionStart) {
+			reject(new Error("Invalid YouTube export section."));
+			return;
+		}
 
-            if (
-                !Number.isFinite(sectionEnd) ||
-                sectionEnd <= sectionStart
-            ) {
-                reject(
-                    new Error(
-                        "Invalid YouTube export section."
-                    )
-                );
-                return;
-            }
+		const outputTemplate = path.join(outputDir, `${id}.%(ext)s`);
+		const section = `*${sectionStart}-${sectionEnd}`;
 
-            const outputTemplate =
-                path.join(
-                    outputDir,
-                    `${id}.%(ext)s`
-                );
+		const args = [
+			url,
+			"-f",
+			"bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/b",
+			"--download-sections",
+			section,
+			"--force-keyframes-at-cuts",
+			"--merge-output-format",
+			"mp4",
+			"--ffmpeg-location",
+			FFMPEG_DIR,
+			"-o",
+			outputTemplate,
+			"--no-playlist",
+			"--print",
+			"after_move:filepath",
+			"--newline",
+		];
 
-            const section = `*${sectionStart}-${sectionEnd}`;
+		const proc = spawn(resolveYtDlpPath(), args, { windowsHide: true });
 
-            const args = [
-                url,
+		let resolvedPath = null;
+		let stderrBuf = "";
 
-                "-f",
-                "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/b",
+		proc.stdout.on("data", (chunk) => {
+			const text = chunk.toString();
 
-                "--download-sections",
-                section,
+			const progressMatch = text.match(/\[download\]\s+(\d{1,3}(?:\.\d+)?)%/);
 
-                /*
-                 * Force a clean video cut at the requested
-                 * section boundaries.
-                 *
-                 * This is slower than a simple keyframe cut,
-                 * but prevents the downloaded clip from
-                 * starting noticeably before/after exp.start.
-                 */
-                "--force-keyframes-at-cuts",
+			if (progressMatch && onProgress) {
+				onProgress(Math.min(99, Math.round(parseFloat(progressMatch[1]))));
+			}
 
-                "--merge-output-format",
-                "mp4",
+			const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
 
-                "--ffmpeg-location",
-                FFMPEG_DIR,
+			for (const line of lines) {
+				if (line.toLowerCase().endsWith(".mp4") && !line.startsWith("[")) {
+					resolvedPath = line;
+				}
+			}
+		});
 
-                "-o",
-                outputTemplate,
+		proc.stderr.on("data", (chunk) => {
+			stderrBuf += chunk.toString();
+		});
 
-                "--no-playlist",
+		proc.on("error", (error) => {
+			reject(new Error(`yt-dlp failed to start: ${error.message}`));
+		});
 
-                "--print",
-                "after_move:filepath",
+		proc.on("close", (code) => {
+			if (code !== 0) {
+				reject(new Error(`YouTube section download failed.\n${stderrBuf}`));
+				return;
+			}
 
-                "--newline",
-            ];
+			if (onProgress) {
+				onProgress(100);
+			}
 
-            const proc = spawn(
-                resolveYtDlpPath(),
-                args,
-                {
-                    windowsHide: true,
-                }
-            );
-
-            let resolvedPath = null;
-            let stderrBuf = "";
-
-            proc.stdout.on(
-                "data",
-                (chunk) => {
-                    const text =
-                        chunk.toString();
-
-                    const progressMatch =
-                        text.match(
-                            /\[download\]\s+(\d{1,3}(?:\.\d+)?)%/
-                        );
-
-                    if (
-                        progressMatch &&
-                        onProgress
-                    ) {
-                        onProgress(
-                            Math.min(
-                                99,
-                                Math.round(
-                                    parseFloat(
-                                        progressMatch[1]
-                                    )
-                                )
-                            )
-                        );
-                    }
-
-                    const lines = text
-                        .split(/\r?\n/)
-                        .map((line) =>
-                            line.trim()
-                        )
-                        .filter(Boolean);
-
-                    for (const line of lines) {
-                        if (
-                            line
-                                .toLowerCase()
-                                .endsWith(".mp4") &&
-                            !line.startsWith("[")
-                        ) {
-                            resolvedPath =
-                                line;
-                        }
-                    }
-                }
-            );
-
-            proc.stderr.on(
-                "data",
-                (chunk) => {
-                    stderrBuf += chunk.toString();
-                }
-            );
-
-            proc.on(
-                "error",
-                (error) => {
-                    reject(
-                        new Error(
-                            `yt-dlp failed to start: ${error.message}`
-                        )
-                    );
-                }
-            );
-
-            proc.on(
-                "close",
-                (code) => {
-                    if (code !== 0) {
-                        reject(
-                            new Error(
-                                `YouTube section download failed.\n${stderrBuf}`
-                            )
-                        );
-                        return;
-                    }
-
-                    if (onProgress) {
-                        onProgress(100);
-                    }
-
-                    resolve({
-                        filePath:
-                            resolvedPath ||
-                            path.join(
-                                outputDir,
-                                `${id}.mp4`
-                            ),
-                    });
-                }
-            );
-        }
-    );
+			resolve({
+				filePath: resolvedPath || path.join(outputDir, `${id}.mp4`),
+			});
+		});
+	});
 }
 
-function downloadYouTube(
-    url,
-    outputDir,
-    id,
-    onProgress
-) {
-    return downloadYouTubeVideo(
-        url,
-        outputDir,
-        id,
-        onProgress
-    );
+function downloadYouTubeSubtitles(url, outputDir, id, languages = "en.*", onProgress) {
+	return new Promise((resolve, reject) => {
+		fs.mkdirSync(outputDir, { recursive: true });
+
+		const outputTemplate = path.join(outputDir, `${id}.%(language)s.%(ext)s`);
+
+		const args = [
+			url,
+			"--skip-download",
+			"--write-subs",
+			"--write-auto-subs",
+			"--sub-langs",
+			languages,
+			"--sub-format",
+			"srt",
+			"--convert-subs",
+			"srt",
+			"--ffmpeg-location",
+			FFMPEG_DIR,
+			"-o",
+			outputTemplate,
+			"--no-playlist",
+			"--no-warnings",
+			"--newline",
+		];
+
+		const proc = spawn(resolveYtDlpPath(), args, { windowsHide: true });
+
+		let stderrBuf = "";
+
+		proc.stdout.on("data", (chunk) => {
+			const text = chunk.toString();
+
+			const progressMatch = text.match(/\[download\]\s+(\d{1,3}(?:\.\d+)?)%/);
+
+			if (progressMatch && onProgress) {
+				onProgress(Math.min(99, Math.round(parseFloat(progressMatch[1]))));
+			}
+		});
+
+		proc.stderr.on("data", (chunk) => {
+			stderrBuf += chunk.toString();
+		});
+
+		proc.on("error", (error) => {
+			reject(new Error(`yt-dlp failed to start: ${error.message}`));
+		});
+
+		proc.on("close", (code) => {
+			if (code !== 0) {
+				reject(new Error(`YouTube subtitles download failed.\n${stderrBuf}`));
+				return;
+			}
+
+			const files = fs.readdirSync(outputDir)
+				.filter((file) => file.startsWith(`${id}.`) && file.endsWith(".srt"));
+
+			if (!files.length) {
+				reject(new Error("No YouTube captions were available."));
+				return;
+			}
+
+			const manualSubtitles = files.filter((file) => !file.includes(".auto."));
+			const selectedFile = manualSubtitles[0] || files[0];
+
+			if (onProgress) {
+				onProgress(100);
+			}
+
+			resolve({
+				filePath: path.join(outputDir, selectedFile),
+			});
+		});
+	});
+}
+
+function downloadYouTube(url, outputDir, id, onProgress) {
+	return downloadYouTubeVideo(url, outputDir, id, onProgress);
 }
 
 function fetchMetadata(url) {
-    return new Promise(
-        (resolve, reject) => {
-            const args = [
-                url,
-                "--dump-json",
-                "--no-playlist",
-                "--no-warnings",
-            ];
+	return new Promise((resolve, reject) => {
+		const args = [
+			url,
+			"--dump-json",
+			"--no-playlist",
+			"--no-warnings",
+		];
 
-            const proc = spawn(
-                resolveYtDlpPath(),
-                args,
-                {
-                    windowsHide: true,
-                }
-            );
+		const proc = spawn(resolveYtDlpPath(), args, { windowsHide: true });
 
-            let stdout = "";
-            let stderr = "";
+		let stdout = "";
+		let stderr = "";
 
-            proc.stdout.on(
-                "data",
-                (chunk) => {
-                    stdout +=
-                        chunk.toString();
-                }
-            );
+		proc.stdout.on("data", (chunk) => {
+			stdout += chunk.toString();
+		});
 
-            proc.stderr.on(
-                "data",
-                (chunk) => {
-                    stderr +=
-                        chunk.toString();
-                }
-            );
+		proc.stderr.on("data", (chunk) => {
+			stderr += chunk.toString();
+		});
 
-            proc.on(
-                "error",
-                (error) => {
-                    reject(error);
-                }
-            );
+		proc.on("error", (error) => {
+			reject(error);
+		});
 
-            proc.on(
-                "close",
-                (code) => {
-                    if (code !== 0) {
-                        reject(
-                            new Error(
-                                `Failed to fetch YouTube metadata.\n${stderr}`
-                            )
-                        );
-                        return;
-                    }
+		proc.on("close", (code) => {
+			if (code !== 0) {
+				reject(new Error(`Failed to fetch YouTube metadata.\n${stderr}`));
+				return;
+			}
 
-                    try {
-                        resolve(
-                            JSON.parse(
-                                stdout
-                            )
-                        );
-                    } catch (error) {
-                        reject(
-                            new Error(
-                                `Could not parse YouTube metadata: ${error.message}`
-                            )
-                        );
-                    }
-                }
-            );
-        }
-    );
+			try {
+				resolve(JSON.parse(stdout));
+			} catch (error) {
+				reject(new Error(`Could not parse YouTube metadata: ${error.message}`));
+			}
+		});
+	});
 }
 
 export {
-    isValidYouTubeUrl,
-    downloadYouTubeAudio,
-    downloadYouTubeVideo,
-    downloadYouTubeVideoSection,
-    downloadYouTube,
-    fetchMetadata,
+	isValidYouTubeUrl,
+	downloadYouTubeAudio,
+	downloadYouTubeVideo,
+	downloadYouTubeVideoSection,
+	downloadYouTubeSubtitles,
+	downloadYouTube,
+	fetchMetadata,
 };
 
 export default {
-    isValidYouTubeUrl,
-    downloadYouTubeAudio,
-    downloadYouTubeVideo,
-    downloadYouTubeVideoSection,
-    downloadYouTube,
-    fetchMetadata,
+	isValidYouTubeUrl,
+	downloadYouTubeAudio,
+	downloadYouTubeVideo,
+	downloadYouTubeVideoSection,
+	downloadYouTubeSubtitles,
+	downloadYouTube,
+	fetchMetadata,
 };

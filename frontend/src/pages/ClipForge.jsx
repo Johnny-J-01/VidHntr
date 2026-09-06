@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-
 import { api } from "../services/api.js";
 import { useSearch } from "../hooks/useSearch.js";
 import { useExport } from "../hooks/useExport.js";
@@ -25,6 +24,7 @@ export default function ClipForge() {
 	const [videos, setVideos] = useState([]);
 	const [selectedId, setSelectedId] = useState(null);
 	const [video, setVideo] = useState(null);
+	const [localPreviewUrl, setLocalPreviewUrl] = useState(null);
 
 	const [rightMode, setRightMode] = useState("search");
 	const [activeMood, setActiveMood] = useState(null);
@@ -45,15 +45,12 @@ export default function ClipForge() {
 
 	const [exportOpen, setExportOpen] = useState(false);
 
-	// NEW: YouTube playback state
 	const [youtubeInfo, setYoutubeInfo] = useState(null);
 	const [youtubeLoading, setYoutubeLoading] = useState(false);
 	const [youtubeError, setYoutubeError] = useState(null);
 	const [transcript, setTranscript] = useState([]);
 
 	const videoRef = useRef(null);
-
-	// NEW: iframe reference for YouTube player
 	const youtubeRef = useRef(null);
 
 	const search = useSearch(selectedId);
@@ -72,26 +69,41 @@ export default function ClipForge() {
 		async function loadTranscript() {
 			try {
 				const res = await api.getTranscript(selectedId);
+
 				if (!cancelled && Array.isArray(res?.transcript)) {
 					setTranscript(res.transcript);
 				}
-			} catch (e) {
-				// Transcript may still be generating
-			}
+			} catch (e) {}
 		}
 
 		loadTranscript();
 
 		let timer;
-		if (video?.status && video.status !== "READY" && video.status !== "ERROR") {
+
+		if (
+			video?.status &&
+			video.status !== "READY" &&
+			video.status !== "ERROR"
+		) {
 			timer = setInterval(loadTranscript, 2500);
 		}
 
 		return () => {
 			cancelled = true;
-			if (timer) clearInterval(timer);
+
+			if (timer) {
+				clearInterval(timer);
+			}
 		};
 	}, [selectedId, video?.status]);
+
+	useEffect(() => {
+		return () => {
+			if (localPreviewUrl) {
+				URL.revokeObjectURL(localPreviewUrl);
+			}
+		};
+	}, [localPreviewUrl]);
 
 	const activeYouTubeCaption = useMemo(() => {
 		if (
@@ -105,12 +117,13 @@ export default function ClipForge() {
 		const seg = transcript.find(
 			(s) => playhead >= Number(s.start) && playhead <= Number(s.end),
 		);
+
 		if (seg) return seg.text;
 
 		const recent = transcript.find(
-			(s) =>
-				playhead >= Number(s.end) && playhead <= Number(s.end) + 0.8,
+			(s) => playhead >= Number(s.end) && playhead <= Number(s.end) + 0.8,
 		);
+
 		return recent ? recent.text : null;
 	}, [captions, transcript, playhead]);
 
@@ -119,13 +132,6 @@ export default function ClipForge() {
 
 		async function refresh() {
 			try {
-				// const list = await api.listVideos();
-
-				// if (!cancelled) {
-				// 	setVideos(list);
-				// }
-
-				// return list;
 				const list = await api.listVideos();
 				const safeList = Array.isArray(list) ? list : [];
 
@@ -144,6 +150,7 @@ export default function ClipForge() {
 		const interval = setInterval(async () => {
 			const list = await refresh();
 			const stillBusy = list.some((v) => !TERMINAL.has(v.status));
+
 			if (!stillBusy) {
 				clearInterval(interval);
 			}
@@ -175,9 +182,7 @@ export default function ClipForge() {
 				if (!TERMINAL.has(v.status)) {
 					timer = setTimeout(poll, 2000);
 				}
-			} catch (e) {
-				// Ignore transient errors while polling.
-			}
+			} catch (e) {}
 		}
 
 		poll();
@@ -274,19 +279,55 @@ export default function ClipForge() {
 
 		setYoutubeInfo(null);
 		setYoutubeError(null);
+
+		setLocalPreviewUrl(null);
 	}
 
 	async function handleUpload(file) {
-		const { videoId } = await api.uploadVideo(file, file.name);
+		const previewUrl = URL.createObjectURL(file);
 
-		const list = await api.listVideos();
+		if (localPreviewUrl) {
+			URL.revokeObjectURL(localPreviewUrl);
+		}
 
-		// setVideos(list);
-		setVideos(Array.isArray(list) ? list : []);
-		selectVideo(videoId);
+		setLocalPreviewUrl(previewUrl);
+
+		try {
+			const { videoId } = await api.uploadVideo(file, file.name);
+
+			const list = await api.listVideos();
+
+			setVideos(Array.isArray(list) ? list : []);
+			setSelectedId(videoId);
+			setRightMode("search");
+			setActiveMood(null);
+
+			search.reset();
+
+			setSelectedResultId(null);
+			setClipStart(0);
+			setClipEnd(0);
+			setOriginalRange({
+				start: 0,
+				end: 0,
+			});
+			setPlayhead(0);
+			setCaptions("off");
+			setYoutubeInfo(null);
+			setYoutubeError(null);
+		} catch (error) {
+			URL.revokeObjectURL(previewUrl);
+			setLocalPreviewUrl(null);
+			throw error;
+		}
 	}
 
 	async function handleAddYouTube(url) {
+		if (localPreviewUrl) {
+			URL.revokeObjectURL(localPreviewUrl);
+			setLocalPreviewUrl(null);
+		}
+
 		const { videoId } = await api.addYouTube(url);
 
 		const list = await api.listVideos();
@@ -297,7 +338,6 @@ export default function ClipForge() {
 
 	function applyClip(result) {
 		setClipStart(result.start);
-
 		setClipEnd(result.end);
 
 		setOriginalRange({
@@ -306,21 +346,14 @@ export default function ClipForge() {
 		});
 
 		setSelectedResultId(result.id);
-
 		setPlayhead(result.start);
 
-		/*
-		 * Uploaded/local video
-		 */
 		if (video?.sourceType === "upload") {
 			if (videoRef.current) {
 				videoRef.current.currentTime = result.start;
 			}
 		}
 
-		/*
-		 * YouTube video
-		 */
 		if (video?.sourceType === "youtube") {
 			seekYouTube(result.start);
 		}
@@ -384,7 +417,6 @@ export default function ClipForge() {
 	function resetRange() {
 		setClipStart(originalRange.start);
 		setClipEnd(originalRange.end);
-
 		setPlayhead(originalRange.start);
 
 		if (video?.sourceType === "upload") {
@@ -408,29 +440,22 @@ export default function ClipForge() {
 	);
 
 	const isReady = video?.status === "READY";
-
 	const isProcessing = video && !TERMINAL.has(video.status);
-
 	const isError = video?.status === "ERROR";
-
-	const hasTranscript =
-		Boolean(video?.transcriptPath) || Boolean(video?.hasTranscript);
 
 	const canSearch = Boolean(video) && !isError;
 
 	const hasPlayableSource =
 		video?.sourceType === "upload" &&
-		(Boolean(video?.filePath) || video?.sourceType === "upload");
+		(Boolean(localPreviewUrl) || Boolean(video?.id));
 
 	const isYouTube = video?.sourceType === "youtube";
-
 	const hasClip = clipEnd > clipStart;
 
 	const handlePlayerTimeUpdate = useCallback(
 		(t) => {
 			setPlayhead(t);
 
-			// Loop playback within selected clip range [clipStart, clipEnd]
 			if (clipEnd > clipStart + 0.2) {
 				if (t >= clipEnd || t < clipStart - 0.5) {
 					if (
@@ -439,6 +464,7 @@ export default function ClipForge() {
 					) {
 						videoRef.current.currentTime = clipStart;
 					}
+
 					if (video?.sourceType === "youtube") {
 						seekYouTube(clipStart);
 					}
@@ -447,6 +473,13 @@ export default function ClipForge() {
 		},
 		[clipStart, clipEnd, video?.sourceType],
 	);
+
+	const uploadSource =
+		localPreviewUrl && video?.sourceType === "upload"
+			? localPreviewUrl
+			: video?.sourceType === "upload"
+				? api.videoFileUrl(video.id)
+				: null;
 
 	return (
 		<>
@@ -509,7 +542,7 @@ export default function ClipForge() {
 							{hasPlayableSource ? (
 								<VideoPlayer
 									ref={videoRef}
-									src={api.videoFileUrl(video.id)}
+									src={uploadSource}
 									captionsOn={
 										captions === "burn" || captions === "on"
 									}
@@ -553,11 +586,14 @@ export default function ClipForge() {
 												allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
 												allowFullScreen
 											/>
+
 											{captions !== "off" && (
 												<div className="absolute bottom-6 left-4 right-4 text-center pointer-events-none z-20">
 													{activeYouTubeCaption ? (
 														<span className="bg-black/90 text-cf-yellow font-medium text-xs sm:text-sm px-4 py-1.5 rounded-lg shadow-2xl border border-cf-yellow/40 backdrop-blur inline-block max-w-[90%] leading-relaxed">
-															{activeYouTubeCaption}
+															{
+																activeYouTubeCaption
+															}
 														</span>
 													) : (
 														<span className="bg-black/80 text-cf-muted font-medium text-xs px-3 py-1 rounded shadow border border-cf-border">
@@ -660,7 +696,6 @@ export default function ClipForge() {
 										}}
 									/>
 
-									{/* <div className="flex items-start justify-between gap-8 pt-2 border-t border-cf-border"> */}
 									<div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-5 sm:gap-8 pt-2 border-t border-cf-border">
 										<ContextControls
 											onAdjustBefore={adjustBefore}
@@ -692,7 +727,6 @@ export default function ClipForge() {
 					)
 				}
 				right={
-					// <aside className="w-[340px] shrink-0 border-l border-cf-border bg-cf-bg flex flex-col h-full p-4">
 					<aside className="w-full h-full border-l border-cf-border bg-cf-bg flex flex-col p-4">
 						<div className="flex items-center gap-5 border-b border-cf-border mb-3 pb-2 text-[13px]">
 							<button
@@ -751,23 +785,7 @@ export default function ClipForge() {
 					</aside>
 				}
 			/>
-			{/* {video && (
-				<ExportModal
-					open={exportOpen}
-					onClose={() => setExportOpen(false)}
-					onExport={(payload) =>
-						exp.startExport({
-							videoId: video.id,
-							start: clipStart,
-							end: clipEnd,
-							...payload,
-						})
-					}
-					defaultName={video.title}
-					captions={captions}
-					exportState={exp}
-				/>
-			)} */}
+
 			{video && exportOpen && (
 				<ExportModal
 					key={exp.exportId || "new-export"}

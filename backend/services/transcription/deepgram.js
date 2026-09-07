@@ -9,47 +9,23 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const FFMPEG_DIR = path.join(
-    __dirname,
-    "..",
-    "..",
-    "..",
-    "ffmpeg-9.0.1-essentials_build",
-    "bin"
+// Windows local fallback path
+const localFfmpeg = path.resolve(
+	__dirname,
+	"..",
+	"..",
+	"..",
+	"ffmpeg-9.0.1-essentials_build",
+	"bin",
+	"ffmpeg.exe"
 );
 
-const FFMPEG_PATH = path.join(
-    FFMPEG_DIR,
-    process.platform === "win32"
-        ? "ffmpeg.exe"
-        : "ffmpeg"
-);
-
-console.log(
-    "Transcription FFmpeg path:",
-    FFMPEG_PATH
-);
-
-console.log(
-    "Transcription FFmpeg exists:",
-    fs.existsSync(FFMPEG_PATH)
-);
-
-if (!fs.existsSync(FFMPEG_PATH)) {
-    throw new Error(
-        `FFmpeg executable not found at: ${FFMPEG_PATH}`
-    );
-}
+// Use environment path, local Windows binary if present, or system 'ffmpeg' on Docker/Linux
+const FFMPEG_PATH = process.env.FFMPEG_PATH || (fs.existsSync(localFfmpeg) ? localFfmpeg : "ffmpeg");
 
 ffmpeg.setFfmpegPath(FFMPEG_PATH);
 
 const CHUNK_SECONDS = 300;
-
-/*
-|--------------------------------------------------------------------------
-| Deepgram Configuration
-|--------------------------------------------------------------------------
-*/
 
 function getDeepgramKey() {
     if (!process.env.DEEPGRAM_API_KEY) {
@@ -60,12 +36,6 @@ function getDeepgramKey() {
 
     return process.env.DEEPGRAM_API_KEY;
 }
-
-/*
-|--------------------------------------------------------------------------
-| Audio Chunking
-|--------------------------------------------------------------------------
-*/
 
 function splitAudio(audioPath, chunkDir, totalDuration) {
     return new Promise((resolve, reject) => {

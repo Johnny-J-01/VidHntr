@@ -18,6 +18,7 @@ import ExportButton from "../components/export/ExportButton.jsx";
 import ExportModal from "../components/export/ExportModal.jsx";
 import DeleteVideoModal from "../components/sources/DeleteVideoModal.jsx";
 import { Toaster, toast } from "react-hot-toast";
+import { ErrorBoundary } from "../components/ErrorBoundary";
 
 const TERMINAL = new Set(["READY", "ERROR"]);
 
@@ -384,6 +385,7 @@ export default function ClipForge() {
 
 	function selectVideo(id) {
 		setSelectedId(id);
+		if (!id) setVideo(null);
 		setRightMode("search");
 		setActiveMood(null);
 
@@ -619,196 +621,203 @@ export default function ClipForge() {
 							</div>
 						</div>
 					) : (
-						<div className="flex-1 min-h-0 overflow-y-auto p-5 flex flex-col gap-4">
-							<div className="flex items-center justify-between">
-								<div className="flex items-center gap-3 min-w-0">
-									<button className="text-cf-muted hover:text-cf-text">
-										←
-									</button>
+						<ErrorBoundary onReset={() => selectVideo(null)}>
+							<div className="flex-1 min-h-0 overflow-y-auto p-5 flex flex-col gap-4">
+								<div className="flex items-center justify-between">
+									<div className="flex items-center gap-3 min-w-0">
+										<button className="text-cf-muted hover:text-cf-text">
+											←
+										</button>
 
-									<h1 className="text-[14px] font-medium truncate">
-										{video.title}
-									</h1>
+										<h1 className="text-[14px] font-medium truncate">
+											{video.title}
+										</h1>
+									</div>
+
+									<button className="text-cf-muted hover:text-cf-text">
+										⋮
+									</button>
 								</div>
 
-								<button className="text-cf-muted hover:text-cf-text">
-									⋮
-								</button>
-							</div>
-
-							{hasPlayableSource ? (
-								<VideoPlayer
-									ref={videoRef}
-									videoId={video.id}
-									captionsOn={captions === "burn"}
-									transcript={transcript}
-									onToggleCaptions={() =>
-										setCaptions((prev) =>
-											prev === "burn" ? "off" : "burn",
-										)
-									}
-									onTimeUpdate={(t) => setPlayhead(t)}
-								/>
-							) : isYouTube ? (
-								<div className="aspect-video bg-black rounded overflow-hidden relative">
-									{youtubeLoading ? (
-										<div className="absolute inset-0 flex items-center justify-center">
-											<p className="text-xs text-cf-muted">
-												Loading YouTube video…
-											</p>
-										</div>
-									) : youtubeError ? (
-										<div className="absolute inset-0 flex items-center justify-center px-6">
-											<div className="text-center">
-												<p className="text-sm mb-1">
-													YouTube playback unavailable
-												</p>
-
+								{hasPlayableSource ? (
+									<VideoPlayer
+										ref={videoRef}
+										videoId={video.id}
+										captionsOn={captions === "burn"}
+										transcript={transcript}
+										onToggleCaptions={() =>
+											setCaptions((prev) =>
+												prev === "burn"
+													? "off"
+													: "burn",
+											)
+										}
+										onTimeUpdate={(t) => setPlayhead(t)}
+									/>
+								) : isYouTube ? (
+									<div className="aspect-video bg-black rounded overflow-hidden relative">
+										{youtubeLoading ? (
+											<div className="absolute inset-0 flex items-center justify-center">
 												<p className="text-xs text-cf-muted">
-													{youtubeError}
+													Loading YouTube video…
 												</p>
 											</div>
-										</div>
-									) : youtubeInfo ? (
-										<>
-											<div
-												ref={youtubeRef}
-												className="w-full h-full"
-											/>
+										) : youtubeError ? (
+											<div className="absolute inset-0 flex items-center justify-center px-6">
+												<div className="text-center">
+													<p className="text-sm mb-1">
+														YouTube playback
+														unavailable
+													</p>
 
-											{captions !== "off" && (
-												<div className="absolute bottom-6 left-4 right-4 text-center pointer-events-none z-20">
-													{activeYouTubeCaption ? (
-														<span className="bg-black/90 text-cf-yellow font-medium text-xs sm:text-sm px-4 py-1.5 rounded-lg shadow-2xl border border-cf-yellow/40 backdrop-blur inline-block max-w-[90%] leading-relaxed">
-															{
-																activeYouTubeCaption
-															}
-														</span>
-													) : null}
+													<p className="text-xs text-cf-muted">
+														{youtubeError}
+													</p>
 												</div>
-											)}
-										</>
-									) : null}
-								</div>
-							) : (
-								<div className="aspect-video flex items-center justify-center border border-cf-border rounded">
-									<div className="text-center px-6">
-										<p className="text-sm mb-1">
-											Video preview unavailable
-										</p>
+											</div>
+										) : youtubeInfo ? (
+											<>
+												<div
+													ref={youtubeRef}
+													className="w-full h-full"
+												/>
 
-										<p className="text-xs text-cf-muted">
-											{isProcessing
-												? "The video is being prepared. You can already search the processed transcript."
-												: "Video playback will be available when the source is prepared."}
-										</p>
+												{captions !== "off" && (
+													<div className="absolute bottom-6 left-4 right-4 text-center pointer-events-none z-20">
+														{activeYouTubeCaption ? (
+															<span className="bg-black/90 text-cf-yellow font-medium text-xs sm:text-sm px-4 py-1.5 rounded-lg shadow-2xl border border-cf-yellow/40 backdrop-blur inline-block max-w-[90%] leading-relaxed">
+																{
+																	activeYouTubeCaption
+																}
+															</span>
+														) : null}
+													</div>
+												)}
+											</>
+										) : null}
 									</div>
-								</div>
-							)}
+								) : (
+									<div className="aspect-video flex items-center justify-center border border-cf-border rounded">
+										<div className="text-center px-6">
+											<p className="text-sm mb-1">
+												Video preview unavailable
+											</p>
 
-							{video.duration ? (
-								<Timeline
-									duration={video.duration}
-									start={clipStart}
-									end={clipEnd}
-									playhead={playhead}
-									onChange={(s, e) => {
-										setClipStart(s);
-										setClipEnd(e);
-									}}
-									onSeek={(t) => {
-										setPlayhead(t);
-
-										if (video.sourceType === "upload") {
-											if (videoRef.current) {
-												videoRef.current.currentTime =
-													t;
-											}
-										}
-
-										if (video.sourceType === "youtube") {
-											seekYouTube(t);
-										}
-									}}
-								/>
-							) : (
-								<div className="text-xs text-cf-muted text-center py-2">
-									Duration is being detected…
-								</div>
-							)}
-
-							{isProcessing && (
-								<div className="border border-cf-border rounded px-3 py-2">
-									<div className="flex items-center justify-between">
-										<span className="text-xs text-cf-muted">
-											{video.status
-												.toLowerCase()
-												.replace("_", " ")}
-										</span>
-
-										<span className="text-xs text-cf-muted">
-											{video.progress || 0}%
-										</span>
+											<p className="text-xs text-cf-muted">
+												{isProcessing
+													? "The video is being prepared. You can already search the processed transcript."
+													: "Video playback will be available when the source is prepared."}
+											</p>
+										</div>
 									</div>
+								)}
 
-									<div className="mt-2 h-1 rounded bg-cf-border overflow-hidden">
-										<div
-											className="h-full bg-cf-yellow transition-all"
-											style={{
-												width: `${
-													video.progress || 0
-												}%`,
-											}}
-										/>
-									</div>
-
-									<p className="text-[11px] text-cf-muted mt-2">
-										Search is available as soon as
-										transcript chunks are processed.
-									</p>
-								</div>
-							)}
-
-							{hasClip && (
-								<>
-									<ClipControls
+								{video.duration ? (
+									<Timeline
+										duration={video.duration}
 										start={clipStart}
 										end={clipEnd}
-										duration={video.duration}
+										playhead={playhead}
 										onChange={(s, e) => {
 											setClipStart(s);
 											setClipEnd(e);
 										}}
+										onSeek={(t) => {
+											setPlayhead(t);
+
+											if (video.sourceType === "upload") {
+												if (videoRef.current) {
+													videoRef.current.currentTime =
+														t;
+												}
+											}
+
+											if (
+												video.sourceType === "youtube"
+											) {
+												seekYouTube(t);
+											}
+										}}
 									/>
-
-									<div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-5 sm:gap-8 pt-2 border-t border-cf-border">
-										<ContextControls
-											onAdjustBefore={adjustBefore}
-											onAdjustAfter={adjustAfter}
-											onReset={resetRange}
-										/>
-
-										<CaptionControls
-											captions={captions}
-											onChange={setCaptions}
-										/>
+								) : (
+									<div className="text-xs text-cf-muted text-center py-2">
+										Duration is being detected…
 									</div>
+								)}
 
-									<ExportButton
-										onClick={() => setExportOpen(true)}
-										disabled={!isReady || !hasClip}
-									/>
-								</>
-							)}
+								{isProcessing && (
+									<div className="border border-cf-border rounded px-3 py-2">
+										<div className="flex items-center justify-between">
+											<span className="text-xs text-cf-muted">
+												{video.status
+													.toLowerCase()
+													.replace("_", " ")}
+											</span>
 
-							{!hasClip && (
-								<p className="text-xs text-cf-muted text-center py-6">
-									{isProcessing
-										? "Search the processed transcript to find moments while the video is still being transcribed."
-										: "Search for a moment or pick an AI suggestion to select a clip."}
-								</p>
-							)}
-						</div>
+											<span className="text-xs text-cf-muted">
+												{video.progress || 0}%
+											</span>
+										</div>
+
+										<div className="mt-2 h-1 rounded bg-cf-border overflow-hidden">
+											<div
+												className="h-full bg-cf-yellow transition-all"
+												style={{
+													width: `${
+														video.progress || 0
+													}%`,
+												}}
+											/>
+										</div>
+
+										<p className="text-[11px] text-cf-muted mt-2">
+											Search is available as soon as
+											transcript chunks are processed.
+										</p>
+									</div>
+								)}
+
+								{hasClip && (
+									<>
+										<ClipControls
+											start={clipStart}
+											end={clipEnd}
+											duration={video.duration}
+											onChange={(s, e) => {
+												setClipStart(s);
+												setClipEnd(e);
+											}}
+										/>
+
+										<div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-5 sm:gap-8 pt-2 border-t border-cf-border">
+											<ContextControls
+												onAdjustBefore={adjustBefore}
+												onAdjustAfter={adjustAfter}
+												onReset={resetRange}
+											/>
+
+											<CaptionControls
+												captions={captions}
+												onChange={setCaptions}
+											/>
+										</div>
+
+										<ExportButton
+											onClick={() => setExportOpen(true)}
+											disabled={!isReady || !hasClip}
+										/>
+									</>
+								)}
+
+								{!hasClip && (
+									<p className="text-xs text-cf-muted text-center py-6">
+										{isProcessing
+											? "Search the processed transcript to find moments while the video is still being transcribed."
+											: "Search for a moment or pick an AI suggestion to select a clip."}
+									</p>
+								)}
+							</div>
+						</ErrorBoundary>
 					)
 				}
 				right={

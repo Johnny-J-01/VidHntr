@@ -52,7 +52,9 @@ const VideoPlayer = forwardRef(function VideoPlayer(
 				}
 			} catch (error) {
 				if (!cancelled) {
-					setSourceError(error.message || "Video playback could not be loaded.");
+					setSourceError(
+						error.message || "Video playback could not be loaded.",
+					);
 				}
 			}
 		}
@@ -67,7 +69,11 @@ const VideoPlayer = forwardRef(function VideoPlayer(
 
 	// Compute synchronized caption segment for the exact current timestamp
 	const currentCaption = useMemo(() => {
-		if (!captionsOn || !Array.isArray(transcript) || transcript.length === 0) {
+		if (
+			!captionsOn ||
+			!Array.isArray(transcript) ||
+			transcript.length === 0
+		) {
 			return null;
 		}
 
@@ -246,6 +252,8 @@ const VideoPlayer = forwardRef(function VideoPlayer(
 		}
 	}
 
+	if (!videoId) return null;
+
 	return (
 		<div
 			ref={containerRef}
@@ -267,7 +275,9 @@ const VideoPlayer = forwardRef(function VideoPlayer(
 				<video
 					ref={ref}
 					src={sourceUrl || undefined}
-					onError={() => setSourceError("Video playback could not be loaded.")}
+					onError={() =>
+						setSourceError("Video playback could not be loaded.")
+					}
 					className="w-full h-full object-contain bg-black"
 				/>
 

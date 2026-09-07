@@ -1,6 +1,7 @@
 import { supabase } from "./supabase.js";
 
-const BASE = "/api";
+const API_HOST = import.meta.env.VITE_API_URL ? import.meta.env.VITE_API_URL.replace(/\/$/, "") : "";
+const BASE = `${API_HOST}/api`;
 
 async function request(path, options = {}) {
 	const { data: authData } = supabase

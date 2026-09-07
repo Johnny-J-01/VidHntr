@@ -9,6 +9,21 @@ const __dirname = path.dirname(__filename);
 const credentialsPath = path.join(__dirname, "..", "..", "cred", "client_secret_813336402888-rojh40sqhalkdq3lp3r4p58qk86etq09.apps.googleusercontent.com.json");
 const tokenPath = path.join(__dirname, "..", "..", "cred", "google-token.json");
 
+// Automatically initialize token file from Base64 env variable if it exists on Render
+if (process.env.GOOGLE_TOKEN_BASE64) {
+	try {
+		const dir = path.dirname(tokenPath);
+		if (!fs.existsSync(dir)) {
+			fs.mkdirSync(dir, { recursive: true });
+		}
+		const decodedToken = Buffer.from(process.env.GOOGLE_TOKEN_BASE64, "base64").toString("utf-8");
+		fs.writeFileSync(tokenPath, decodedToken);
+		console.log("Successfully initialized Google token file from GOOGLE_TOKEN_BASE64.");
+	} catch (error) {
+		console.error("Failed to decode and write GOOGLE_TOKEN_BASE64:", error);
+	}
+}
+
 // 1. Prefer Environment Variables in production, fallback to local file in development
 let client_id = process.env.GOOGLE_CLIENT_ID;
 let client_secret = process.env.GOOGLE_CLIENT_SECRET;

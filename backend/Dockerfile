@@ -1,4 +1,4 @@
-FROM node:20-slim
+FROM node:22-slim
 
 # Install system dependencies: FFmpeg, Python 3, yt-dlp, and SSL certificates
 RUN apt-get update && apt-get install -y \

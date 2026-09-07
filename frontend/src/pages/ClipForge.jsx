@@ -7,7 +7,7 @@ import AppShell from "../components/layout/AppShell.jsx";
 import TopBar from "../components/layout/TopBar.jsx";
 import SourcesPanel from "../components/sources/SourcesPanel.jsx";
 import VideoPlayer from "../components/editor/VideoPlayer.jsx";
-import Timeline from "../components/editor/Timeline.jsx";
+import Timeline from "../components/editor/TimeLine.jsx";
 import ClipControls, {
 	ContextControls,
 } from "../components/editor/ClipControls.jsx";

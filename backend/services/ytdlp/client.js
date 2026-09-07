@@ -6,7 +6,12 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const FFMPEG_DIR = path.join(__dirname, "..", "..", "..", "ffmpeg-9.0.1-essentials_build", "bin");
+const localFfmpegDir = path.join(__dirname, "..", "..", "..", "ffmpeg-9.0.1-essentials_build", "bin");
+
+// Only pass --ffmpeg-location if the local Windows directory actually exists
+const FFMPEG_LOCATION_ARGS = fs.existsSync(localFfmpegDir)
+	? ["--ffmpeg-location", localFfmpegDir]
+	: [];
 
 const YOUTUBE_URL_RE = /^(https?:\/\/)?(www\.)?(youtube\.com\/(watch\?v=|shorts\/)|youtu\.be\/)[\w-]+/i;
 
@@ -51,8 +56,7 @@ function downloadYouTubeAudio(url, outputDir, id, onProgress) {
 			"32K",
 			"--postprocessor-args",
 			"ffmpeg:-ar 16000 -ac 1",
-			"--ffmpeg-location",
-			FFMPEG_DIR,
+			...FFMPEG_LOCATION_ARGS,
 			"-o",
 			outputTemplate,
 			"--no-playlist",
@@ -121,8 +125,7 @@ function downloadYouTubeVideo(url, outputDir, id, onProgress) {
 			"bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/b",
 			"--merge-output-format",
 			"mp4",
-			"--ffmpeg-location",
-			FFMPEG_DIR,
+			...FFMPEG_LOCATION_ARGS,
 			"-o",
 			outputTemplate,
 			"--no-playlist",
@@ -203,8 +206,7 @@ function downloadYouTubeVideoSection(url, outputDir, id, start, end, onProgress)
 			"--force-keyframes-at-cuts",
 			"--merge-output-format",
 			"mp4",
-			"--ffmpeg-location",
-			FFMPEG_DIR,
+			...FFMPEG_LOCATION_ARGS,
 			"-o",
 			outputTemplate,
 			"--no-playlist",
@@ -278,8 +280,7 @@ function downloadYouTubeSubtitles(url, outputDir, id, languages = "en.*", onProg
 			"srt",
 			"--convert-subs",
 			"srt",
-			"--ffmpeg-location",
-			FFMPEG_DIR,
+			...FFMPEG_LOCATION_ARGS,
 			"-o",
 			outputTemplate,
 			"--no-playlist",

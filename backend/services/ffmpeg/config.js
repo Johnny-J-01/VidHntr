@@ -6,37 +6,16 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const FFMPEG_PATH = path.resolve(
-	__dirname,
-	"..",
-	"..",
-	"..",
-	"ffmpeg-9.0.1-essentials_build",
-	"bin",
-	"ffmpeg.exe",
-);
+// Windows local fallback paths
+const localFfmpeg = path.resolve(__dirname, "..", "..", "..", "ffmpeg-9.0.1-essentials_build", "bin", "ffmpeg.exe");
+const localFfprobe = path.resolve(__dirname, "..", "..", "..", "ffmpeg-9.0.1-essentials_build", "bin", "ffprobe.exe");
 
-const FFPROBE_PATH = path.resolve(
-	__dirname,
-	"..",
-	"..",
-	"..",
-	"ffmpeg-9.0.1-essentials_build",
-	"bin",
-	"ffprobe.exe",
-);
-
-if (!fs.existsSync(FFMPEG_PATH)) {
-	throw new Error(`FFmpeg executable not found at:\n${FFMPEG_PATH}`);
-}
-
-if (!fs.existsSync(FFPROBE_PATH)) {
-	throw new Error(`FFprobe executable not found at:\n${FFPROBE_PATH}`);
-}
+// Automatically use local Windows binaries if present, otherwise default to system Linux binaries
+const FFMPEG_PATH = process.env.FFMPEG_PATH || (fs.existsSync(localFfmpeg) ? localFfmpeg : "ffmpeg");
+const FFPROBE_PATH = process.env.FFPROBE_PATH || (fs.existsSync(localFfprobe) ? localFfprobe : "ffprobe");
 
 ffmpeg.setFfmpegPath(FFMPEG_PATH);
 ffmpeg.setFfprobePath(FFPROBE_PATH);
-
 function probeDuration(filePath) {
 	return new Promise((resolve, reject) => {
 		ffmpeg.ffprobe(filePath, (error, data) => {

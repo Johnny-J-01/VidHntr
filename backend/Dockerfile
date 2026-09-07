@@ -1,4 +1,4 @@
-FROM node:18-slim
+FROM node:22-slim
 
 # Install system dependencies (Python, ffmpeg, curl)
 RUN apt-get update && apt-get install -y \

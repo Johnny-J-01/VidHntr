@@ -15,6 +15,32 @@ const FFMPEG_LOCATION_ARGS = fs.existsSync(localFfmpegDir)
 
 const YOUTUBE_URL_RE = /^(https?:\/\/)?(www\.)?(youtube\.com\/(watch\?v=|shorts\/)|youtu\.be\/)[\w-]+/i;
 
+// Global helper to bypass YouTube bot blocks & JS runtime warnings across all calls
+function getBypassArgs() {
+	const args = [
+		"--js-runtimes",
+		"node",
+		"--extractor-args",
+		"youtube:player_client=android,ios",
+	];
+
+	// Support cookies automatically if YOUTUBE_COOKIES_BASE64 env var is provided on Render
+	if (process.env.YOUTUBE_COOKIES_BASE64) {
+		const cookiePath = path.join("/tmp", "youtube_cookies.txt");
+		try {
+			if (!fs.existsSync(cookiePath)) {
+				const decoded = Buffer.from(process.env.YOUTUBE_COOKIES_BASE64, "base64").toString("utf-8");
+				fs.writeFileSync(cookiePath, decoded);
+			}
+			args.push("--cookies", cookiePath);
+		} catch (e) {
+			// Fail silently if temp write fails
+		}
+	}
+
+	return args;
+}
+
 function resolveYtDlpPath() {
 	if (process.env.YTDLP_PATH && fs.existsSync(process.env.YTDLP_PATH)) {
 		return process.env.YTDLP_PATH;
@@ -47,6 +73,7 @@ function downloadYouTubeAudio(url, outputDir, id, onProgress) {
 
 		const args = [
 			url,
+			...getBypassArgs(),
 			"-f",
 			"bestaudio/best",
 			"-x",
@@ -121,6 +148,7 @@ function downloadYouTubeVideo(url, outputDir, id, onProgress) {
 
 		const args = [
 			url,
+			...getBypassArgs(),
 			"-f",
 			"bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/b",
 			"--merge-output-format",
@@ -199,6 +227,7 @@ function downloadYouTubeVideoSection(url, outputDir, id, start, end, onProgress)
 
 		const args = [
 			url,
+			...getBypassArgs(),
 			"-f",
 			"bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/b",
 			"--download-sections",
@@ -271,6 +300,7 @@ function downloadYouTubeSubtitles(url, outputDir, id, languages = "en.*", onProg
 
 		const args = [
 			url,
+			...getBypassArgs(),
 			"--skip-download",
 			"--write-subs",
 			"--write-auto-subs",
@@ -346,6 +376,7 @@ function fetchMetadata(url) {
 	return new Promise((resolve, reject) => {
 		const args = [
 			url,
+			...getBypassArgs(),
 			"--dump-json",
 			"--no-playlist",
 			"--no-warnings",

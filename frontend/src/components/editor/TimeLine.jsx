@@ -276,7 +276,8 @@ export default function Timeline({
 						Timeline Ruler
 					</span>
 					<span className="text-[11px] font-mono text-cf-yellow bg-cf-yellow/10 border border-cf-yellow/30 px-2 py-0.5 rounded">
-						Window: {formatTickTime(viewStart)} – {formatTickTime(viewEnd)}
+						Window: {formatTickTime(viewStart)} –{" "}
+						{formatTickTime(viewEnd)}
 					</span>
 					<span className="text-[11px] text-cf-muted font-mono">
 						(Total: {formatTickTime(duration)})

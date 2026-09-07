@@ -9,6 +9,7 @@ export default function SourcesPanel({
 	onUpload,
 	onAddYouTube,
 	onDelete,
+	onRetry,
 	storage,
 }) {
 	return (
@@ -17,7 +18,6 @@ export default function SourcesPanel({
 				{/* HEADER */}
 				<div className="flex items-center justify-between mb-3 shrink-0">
 					<p className="text-[13px] font-semibold">Sources</p>
-
 					<span className="text-cf-muted text-sm">⭱</span>
 				</div>
 
@@ -38,6 +38,7 @@ export default function SourcesPanel({
 						selectedId={selectedId}
 						onSelect={onSelect}
 						onDelete={onDelete}
+						onRetry={onRetry}
 					/>
 				</div>
 			</div>
@@ -46,7 +47,6 @@ export default function SourcesPanel({
 			<div className="p-3 sm:p-4 border-t border-cf-border w-full shrink-0">
 				<div className="flex items-center justify-between gap-2 text-[11px] text-cf-muted mb-1.5">
 					<span>Storage</span>
-
 					<span className="tabular-nums">
 						{storage.used} / {storage.total}
 					</span>

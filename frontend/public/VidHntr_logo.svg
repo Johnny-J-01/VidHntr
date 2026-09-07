@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" width="100%" height="100%">
+  <defs>
+    <radialGradient id="brightBg" cx="50%" cy="50%" r="75%">
+      <stop offset="0%" stop-color="#1E1E28" />
+      <stop offset="100%" stop-color="#09090D" />
+    </radialGradient>
+
+    <!-- Ultra-bright metallic gradient for strong contrast -->
+    <linearGradient id="brightPlatinum" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="40%" stop-color="#E2E2EC" />
+      <stop offset="100%" stop-color="#9A9AA8" />
+    </linearGradient>
+
+    <!-- Glowing light blue-to-white laser core to make the shape pop instantly -->
+    <linearGradient id="vividBeam" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#C4C4FF" />
+      <stop offset="30%" stop-color="#FFFFFF" />
+      <stop offset="100%" stop-color="#3333FF" />
+    </linearGradient>
+
+    <filter id="intenseGlow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="10" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <rect width="500" height="500" fill="url(#brightBg)" />
+
+  <!-- Centered Expanded Logo Symbol (Balanced to eliminate the "just a V" look) -->
+  <g transform="translate(250, 250)">
+    
+    <!-- Left Structural Wing / Frame Anchor -->
+    <path d="M -135 -40 L -65 125 L -15 125 L -85 -40 Z" 
+          fill="url(#brightPlatinum)" 
+          stroke="#FFFFFF" 
+          stroke-width="2.5" 
+          stroke-linejoin="miter" />
+
+    <!-- Right Structural Anchor (Balances the weight so it reads as a robust mark, not a lone V) -->
+    <path d="M 65 -125 L 135 -40 L 85 -40 L 15 -125 Z" 
+          fill="url(#brightPlatinum)" 
+          stroke="#FFFFFF" 
+          stroke-width="2.5" 
+          stroke-linejoin="miter" />
+
+    <!-- Central High-Intensity Extraction Vector / Search Laser -->
+    <g filter="url(#intenseGlow)">
+      <path d="M -70 50 L 50 -70 L 120 -70 L 120 -10 L 0 110 Z" 
+            fill="url(#vividBeam)" 
+            stroke="#FFFFFF" 
+            stroke-width="3" 
+            stroke-linejoin="round" />
+    </g>
+
+    <!-- Precise Reticle & Target Focal Point (The "discovery/timestamp" marker) -->
+    <circle cx="35" cy="-35" r="40" fill="none" stroke="#FFFFFF" stroke-width="3" stroke-dasharray="7 5" />
+    <circle cx="35" cy="-35" r="9" fill="#FFFFFF" />
+
+    <!-- Prominent Corner Brackets for Edge Definition -->
+    <path d="M 140 -115 L 160 -115 L 160 -95" fill="none" stroke="#FFFFFF" stroke-width="4.5" stroke-linecap="square" />
+    <path d="M -160 95 L -160 115 L -140 115" fill="none" stroke="#FFFFFF" stroke-width="4.5" stroke-linecap="square" />
+
+  </g>
+</svg>

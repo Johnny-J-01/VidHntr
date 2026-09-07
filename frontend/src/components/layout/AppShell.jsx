@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 
 export default function AppShell({ top, left, center, right }) {
-	const [leftWidth, setLeftWidth] = useState(240);
+	// Increased default left panel width from 240px to 320px
+	const [leftWidth, setLeftWidth] = useState(320);
 	const [rightWidth, setRightWidth] = useState(340);
 
 	const [screenSize, setScreenSize] = useState(() => {
@@ -59,7 +60,7 @@ export default function AppShell({ top, left, center, right }) {
 				const maxLeft = rect.width - rightWidth - 420;
 
 				const newWidth = Math.max(
-					200,
+					240,
 					Math.min(e.clientX - rect.left, maxLeft),
 				);
 
@@ -198,7 +199,7 @@ export default function AppShell({ top, left, center, right }) {
 					ref={containerRef}
 					className="flex-1 min-h-0 min-w-0 overflow-y-auto px-2 pb-2 pt-2"
 				>
-					<div className="w-full min-w-0 grid grid-cols-[180px_minmax(0,1fr)] gap-2">
+					<div className="w-full min-w-0 grid grid-cols-[220px_minmax(0,1fr)] gap-2">
 						<div className="min-w-0 min-h-[500px] max-h-[calc(100vh-100px)] overflow-hidden rounded-xl border border-cf-border bg-cf-bg shadow-sm">
 							<div className="w-full h-full min-w-0 overflow-y-auto">
 								{left}
@@ -232,7 +233,7 @@ export default function AppShell({ top, left, center, right }) {
 					className="flex-1 min-h-0 min-w-0 overflow-hidden px-2 pb-2 pt-2"
 				>
 					<div className="h-full min-h-0 min-w-0 flex gap-2">
-						<div className="w-[190px] shrink-0 min-w-0 overflow-hidden rounded-xl border border-cf-border bg-cf-bg shadow-sm">
+						<div className="w-[240px] shrink-0 min-w-0 overflow-hidden rounded-xl border border-cf-border bg-cf-bg shadow-sm">
 							<div className="w-full h-full min-w-0 overflow-y-auto">
 								{left}
 							</div>
@@ -263,7 +264,7 @@ export default function AppShell({ top, left, center, right }) {
 				ref={containerRef}
 				className="flex-1 min-h-0 min-w-0 overflow-hidden px-3 pb-3 pt-3"
 			>
-				<div className="h-full min-h-0 min-w-0 flex gap-3">
+				<div className="h-full min-h-0 min-w-0 flex gap-1.5">
 					<div
 						className="h-full shrink-0 min-w-0 overflow-hidden rounded-xl border border-cf-border bg-cf-bg shadow-sm"
 						style={{
@@ -275,11 +276,13 @@ export default function AppShell({ top, left, center, right }) {
 						</div>
 					</div>
 
+					{/* VISIBLE RESIZE HANDLE (LEFT) */}
 					<div
 						onPointerDown={() => startResize("left")}
-						className="w-2 shrink-0 h-full cursor-col-resize flex items-center justify-center group"
+						className="w-2 shrink-0 h-full cursor-col-resize flex items-center justify-center group hover:bg-cf-yellow/10 rounded transition-colors"
+						title="Drag to resize panel"
 					>
-						<div className="w-[2px] h-10 rounded-full bg-transparent group-hover:bg-cf-border group-active:bg-cf-yellow transition-colors" />
+						<div className="w-[3px] h-12 rounded-full bg-cf-border group-hover:bg-cf-yellow group-active:bg-cf-yellow transition-colors" />
 					</div>
 
 					<div className="h-full min-h-0 min-w-0 flex flex-col flex-1 overflow-hidden rounded-xl border border-cf-border bg-cf-bg shadow-sm">
@@ -288,11 +291,13 @@ export default function AppShell({ top, left, center, right }) {
 						</div>
 					</div>
 
+					{/* VISIBLE RESIZE HANDLE (RIGHT) */}
 					<div
 						onPointerDown={() => startResize("right")}
-						className="w-2 shrink-0 h-full cursor-col-resize flex items-center justify-center group"
+						className="w-2 shrink-0 h-full cursor-col-resize flex items-center justify-center group hover:bg-cf-yellow/10 rounded transition-colors"
+						title="Drag to resize panel"
 					>
-						<div className="w-[2px] h-10 rounded-full bg-transparent group-hover:bg-cf-border group-active:bg-cf-yellow transition-colors" />
+						<div className="w-[3px] h-12 rounded-full bg-cf-border group-hover:bg-cf-yellow group-active:bg-cf-yellow transition-colors" />
 					</div>
 
 					<div

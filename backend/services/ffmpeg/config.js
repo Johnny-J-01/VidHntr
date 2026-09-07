@@ -285,26 +285,10 @@ function normalizeVideoSection(inputPath, outputPath, duration) {
 }
 
 const QUALITY_PRESETS = {
-	low: {
-		crf: 32,
-		preset: "veryfast",
-		audioBitrate: "96k",
-	},
-	medium: {
-		crf: 26,
-		preset: "fast",
-		audioBitrate: "128k",
-	},
-	high: {
-		crf: 21,
-		preset: "medium",
-		audioBitrate: "192k",
-	},
-	maximum: {
-		crf: 17,
-		preset: "slow",
-		audioBitrate: "256k",
-	},
+	low: { crf: 28, preset: "ultrafast", audioBitrate: "128k" },
+	medium: { crf: 24, preset: "superfast", audioBitrate: "128k" },
+	high: { crf: 20, preset: "veryfast", audioBitrate: "192k" },
+	maximum: { crf: 18, preset: "fast", audioBitrate: "256k" },
 };
 
 function buildFillFilter(width, height) {
@@ -316,7 +300,7 @@ function buildFillFilter(width, height) {
 
 	return [
 		`crop=w=${cropWidth}:h=${cropHeight}:x=${cropX}:y=${cropY}`,
-		`scale=w=${width}:h=${height}:flags=lanczos`,
+		`scale=w=${width}:h=${height}:flags=bicubic`,
 	];
 }
 
@@ -327,7 +311,7 @@ function escapeFilterPath(filePath) {
 		.replace(/'/g, "\\'");
 }
 
-function buildCaptionFilter(captionsSrtPath) {
+function buildCaptionFilter(captionsSrtPath, width, height) {
 	if (!captionsSrtPath || !fs.existsSync(captionsSrtPath)) {
 		return null;
 	}
@@ -342,8 +326,18 @@ function buildCaptionFilter(captionsSrtPath) {
 	}
 
 	const escaped = escapeFilterPath(captionsSrtPath);
+	const isVertical = height && width ? height > width : false;
 
-	return `subtitles='${escaped}':force_style='FontName=Arial,FontSize=16,Bold=1,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2,Shadow=1,Alignment=2,MarginV=70'`;
+	// Modern Social Media Caption Style:
+	// - BorderStyle=1: Clean text with black outline & deep drop shadow (No ugly blocky rectangle)
+	// - PrimaryColour=&H0015CCFA: Vibrant Yellow (#FACC15)
+	// - OutlineColour=&H00000000: Solid Black stroke for high contrast
+	// - FontName=Trebuchet MS / Arial Black: Punchy, readable font weight
+	const forceStyle = isVertical
+		? "FontName=Trebuchet MS,FontSize=14,Bold=1,PrimaryColour=&H0015CCFA,OutlineColour=&H00000000,BackColour=&H80000000,BorderStyle=1,Outline=3,Shadow=3,Alignment=2,MarginV=55"
+		: "FontName=Trebuchet MS,FontSize=14,Bold=1,PrimaryColour=&H0015CCFA,OutlineColour=&H00000000,BackColour=&H80000000,BorderStyle=1,Outline=2.5,Shadow=2.5,Alignment=2,MarginV=30";
+
+	return `subtitles='${escaped}':force_style='${forceStyle}'`;
 }
 
 function exportClip({
@@ -360,6 +354,7 @@ function exportClip({
 }) {
 	return new Promise((resolve, reject) => {
 		try {
+			console.time("⏱️ Export Speed");
 			const duration = Math.max(0.1, Number(end) - Number(start));
 			const q = QUALITY_PRESETS[quality] || QUALITY_PRESETS.high;
 
@@ -369,7 +364,11 @@ function exportClip({
 					...buildFillFilter(width, height),
 				];
 
-				const captionFilter = buildCaptionFilter(captionsSrtPath);
+				const captionFilter = buildCaptionFilter(
+					captionsSrtPath,
+					width,
+					height,
+				);
 				if (captionFilter) {
 					filters.push(captionFilter);
 				}
@@ -400,10 +399,14 @@ function exportClip({
 				command
 					.on("progress", (progress) => {
 						if (onProgress) {
+
 							onProgress(Math.min(100, progress.percent || 0));
 						}
 					})
-					.on("end", () => resolve(outputPath))
+					.on("end", () => {
+						console.timeEnd("⏱️ Export Speed");
+						resolve(outputPath);
+					})
 					.on("error", (error) => reject(error))
 					.run();
 
@@ -419,7 +422,11 @@ function exportClip({
 					"[bgblur][fgfit]overlay=(W-w)/2:(H-h)/2[composed]",
 				];
 
-				const captionFilter = buildCaptionFilter(captionsSrtPath);
+				const captionFilter = buildCaptionFilter(
+					captionsSrtPath,
+					width,
+					height,
+				);
 				if (captionFilter) {
 					filters.push(`[composed]${captionFilter}[vout]`);
 				} else {
@@ -455,7 +462,10 @@ function exportClip({
 							onProgress(Math.min(100, progress.percent || 0));
 						}
 					})
-					.on("end", () => resolve(outputPath))
+					.on("end", () => {
+						console.timeEnd("⏱️ Export Speed");
+						resolve(outputPath);
+					})
 					.on("error", (error) => reject(error))
 					.run();
 

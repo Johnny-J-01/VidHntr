@@ -23,12 +23,20 @@ export default function TopBar({ onSearch, onMood, activeMood, disabled }) {
 				<div className="hidden sm:grid sm:grid-cols-[1fr_auto_1fr] sm:items-start sm:gap-4">
 					{/* LOGO */}
 					<div className="flex items-center gap-2 shrink-0 pt-1">
-						<div className="w-8 h-8 rounded-cf bg-cf-yellow flex items-center justify-center text-black text-base">
-							🎬
-						</div>
-
-						<span className="font-semibold text-[15px] tracking-tight">
-							ClipFinder
+						<img
+							className="w-10 h-10 rounded-cf flex items-center justify-center text-base"
+							style={{
+								filter: "drop-shadow(0 0 12px rgba(250, 204, 21, 1)) drop-shadow(0 0 4px rgba(255, 255, 255, 0.9))",
+							}}
+							src="../../../public/VidHntr_logo.svg"
+							alt="VidHntr Logo"
+						/>
+						<span className="font-custom font-black text-[16px] tracking-widest bg-gradient-to-r from-white via-white to-[#facc15] bg-clip-text text-transparent drop-shadow-[0_0_12px_rgba(250,204,21,0.6)]">
+							Vid
+							<span className="text-[#facc15] bg-none text-transparent bg-clip-text">
+								H
+							</span>
+							ntr
 						</span>
 					</div>
 

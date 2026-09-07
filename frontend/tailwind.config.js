@@ -17,6 +17,7 @@ export default {
       },
       fontFamily: {
         sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+          custom: ['Cartograph CF', 'sans-serif'],
       },
       borderRadius: {
         cf: '8px',

@@ -2,6 +2,14 @@
 @tailwind components;
 @tailwind utilities;
 
+@font-face {
+  font-family: 'Cartograph CF';
+  src: url('/fonts/CustomFont.woff2') format('woff2'); /* Adjust path to where your font is stored */
+  font-weight: 700; /* Set this to match the weight of your font file */
+  font-style: normal;
+  font-display: swap;
+}
+
 @layer base {
   html, body, #root {
     height: 100%;

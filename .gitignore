@@ -22,6 +22,8 @@ Thumbs.db
 backend/storage/
 
 backend/bin/
+!backend/bin/yt-dlp
+!backend/bin/yt-dlp.exe
 ffmpeg-*/
 cred
 backend/cred/

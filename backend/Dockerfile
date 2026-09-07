@@ -12,15 +12,15 @@ RUN apt-get update && apt-get install -y \
 RUN curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp \
     && chmod a+rx /usr/local/bin/yt-dlp
 
-# Set working directory
+# Set working directory inside container
 WORKDIR /app
 
-# Copy package files and install dependencies
-COPY backend/package*.json ./
+# Copy package files from context root
+COPY package*.json ./
 RUN npm install
 
-# Copy the rest of the backend code
-COPY backend/ ./
+# Copy all remaining backend files from context root
+COPY . ./
 
 # Expose port and start server
 EXPOSE 5000

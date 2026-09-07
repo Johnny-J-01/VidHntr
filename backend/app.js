@@ -34,9 +34,9 @@ app.use((error, request, response, next) => {
 	});
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, "0.0.0.0", () => {
 	console.log(
-		`ClipForge server listening on http://localhost:${PORT}`
+		`VidHntr server listening on http://localhost:${PORT}`
 	);
 	startCleanupScheduler();
 });

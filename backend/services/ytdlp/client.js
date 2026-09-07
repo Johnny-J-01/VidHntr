@@ -8,7 +8,6 @@ const __dirname = path.dirname(__filename);
 
 const localFfmpegDir = path.join(__dirname, "..", "..", "..", "ffmpeg-9.0.1-essentials_build", "bin");
 
-// Only pass --ffmpeg-location if the local Windows directory actually exists
 const FFMPEG_LOCATION_ARGS = fs.existsSync(localFfmpegDir)
 	? ["--ffmpeg-location", localFfmpegDir]
 	: [];
@@ -18,14 +17,12 @@ const YOUTUBE_URL_RE = /^(https?:\/\/)?(www\.)?(youtube\.com\/(watch\?v=|shorts\
 function getBypassArgs() {
 	const args = [
 		"--js-runtimes", "node",
-		"--extractor-args", "youtube:player_client=web", // Swapped to web client to match browser cookies
+		"--extractor-args", "youtube:player_client=web",
 	];
 
 	if (process.env.YOUTUBE_COOKIES_BASE64) {
-		// Changed filename to ensure we bypass any old cached files
 		const cookiePath = path.join("/tmp", "yt_cookies_fresh.txt");
 		try {
-			// Removed the existsSync check so it ALWAYS writes the latest cookies
 			const decoded = Buffer.from(process.env.YOUTUBE_COOKIES_BASE64, "base64").toString("utf-8");
 			fs.writeFileSync(cookiePath, decoded);
 			args.push("--cookies", cookiePath);
@@ -36,6 +33,7 @@ function getBypassArgs() {
 
 	return args;
 }
+
 function resolveYtDlpPath() {
 	if (process.env.YTDLP_PATH && fs.existsSync(process.env.YTDLP_PATH)) {
 		return process.env.YTDLP_PATH;
@@ -94,7 +92,6 @@ function downloadYouTubeAudio(url, outputDir, id, onProgress) {
 
 		proc.stdout.on("data", (chunk) => {
 			const text = chunk.toString();
-
 			const progressMatch = text.match(/\[download\]\s+(\d{1,3}(?:\.\d+)?)%/);
 
 			if (progressMatch && onProgress) {
@@ -102,7 +99,6 @@ function downloadYouTubeAudio(url, outputDir, id, onProgress) {
 			}
 
 			const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-
 			for (const line of lines) {
 				if (line.toLowerCase().endsWith(".mp3") && !line.startsWith("[")) {
 					resolvedPath = line;
@@ -164,7 +160,6 @@ function downloadYouTubeVideo(url, outputDir, id, onProgress) {
 
 		proc.stdout.on("data", (chunk) => {
 			const text = chunk.toString();
-
 			const progressMatch = text.match(/\[download\]\s+(\d{1,3}(?:\.\d+)?)%/);
 
 			if (progressMatch && onProgress) {
@@ -172,7 +167,6 @@ function downloadYouTubeVideo(url, outputDir, id, onProgress) {
 			}
 
 			const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-
 			for (const line of lines) {
 				if (line.toLowerCase().endsWith(".mp4") && !line.startsWith("[")) {
 					resolvedPath = line;
@@ -246,7 +240,6 @@ function downloadYouTubeVideoSection(url, outputDir, id, start, end, onProgress)
 
 		proc.stdout.on("data", (chunk) => {
 			const text = chunk.toString();
-
 			const progressMatch = text.match(/\[download\]\s+(\d{1,3}(?:\.\d+)?)%/);
 
 			if (progressMatch && onProgress) {
@@ -254,7 +247,6 @@ function downloadYouTubeVideoSection(url, outputDir, id, start, end, onProgress)
 			}
 
 			const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-
 			for (const line of lines) {
 				if (line.toLowerCase().endsWith(".mp4") && !line.startsWith("[")) {
 					resolvedPath = line;
@@ -314,12 +306,10 @@ function downloadYouTubeSubtitles(url, outputDir, id, languages = "en.*", onProg
 		];
 
 		const proc = spawn(resolveYtDlpPath(), args, { windowsHide: true });
-
 		let stderrBuf = "";
 
 		proc.stdout.on("data", (chunk) => {
 			const text = chunk.toString();
-
 			const progressMatch = text.match(/\[download\]\s+(\d{1,3}(?:\.\d+)?)%/);
 
 			if (progressMatch && onProgress) {
@@ -378,7 +368,6 @@ function fetchMetadata(url) {
 		];
 
 		const proc = spawn(resolveYtDlpPath(), args, { windowsHide: true });
-
 		let stdout = "";
 		let stderr = "";
 
@@ -386,7 +375,7 @@ function fetchMetadata(url) {
 			stdout += chunk.toString();
 		});
 
-		proc.stderr.on("data", (chunk) => {
+        proc.stderr.on("data", (chunk) => {
 			stderr += chunk.toString();
 		});
 

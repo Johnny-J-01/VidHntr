@@ -42,25 +42,6 @@ export default function SourcesPanel({
 					/>
 				</div>
 			</div>
-
-			{/* STORAGE */}
-			<div className="p-3 sm:p-4 border-t border-cf-border w-full shrink-0">
-				<div className="flex items-center justify-between gap-2 text-[11px] text-cf-muted mb-1.5">
-					<span>Storage</span>
-					<span className="tabular-nums">
-						{storage.used} / {storage.total}
-					</span>
-				</div>
-
-				<div className="h-1.5 rounded-full bg-cf-panel2 overflow-hidden w-full">
-					<div
-						className="h-full bg-cf-yellow transition-all"
-						style={{
-							width: `${Math.min(100, storage.percent)}%`,
-						}}
-					/>
-				</div>
-			</div>
 		</aside>
 	);
 }

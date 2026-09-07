@@ -15,32 +15,27 @@ const FFMPEG_LOCATION_ARGS = fs.existsSync(localFfmpegDir)
 
 const YOUTUBE_URL_RE = /^(https?:\/\/)?(www\.)?(youtube\.com\/(watch\?v=|shorts\/)|youtu\.be\/)[\w-]+/i;
 
-// Global helper to bypass YouTube bot blocks & JS runtime warnings across all calls
 function getBypassArgs() {
 	const args = [
-		"--js-runtimes",
-		"node",
-		"--extractor-args",
-		"youtube:player_client=android,ios",
+		"--js-runtimes", "node",
+		"--extractor-args", "youtube:player_client=web", // Swapped to web client to match browser cookies
 	];
 
-	// Support cookies automatically if YOUTUBE_COOKIES_BASE64 env var is provided on Render
 	if (process.env.YOUTUBE_COOKIES_BASE64) {
-		const cookiePath = path.join("/tmp", "youtube_cookies.txt");
+		// Changed filename to ensure we bypass any old cached files
+		const cookiePath = path.join("/tmp", "yt_cookies_fresh.txt");
 		try {
-			if (!fs.existsSync(cookiePath)) {
-				const decoded = Buffer.from(process.env.YOUTUBE_COOKIES_BASE64, "base64").toString("utf-8");
-				fs.writeFileSync(cookiePath, decoded);
-			}
+			// Removed the existsSync check so it ALWAYS writes the latest cookies
+			const decoded = Buffer.from(process.env.YOUTUBE_COOKIES_BASE64, "base64").toString("utf-8");
+			fs.writeFileSync(cookiePath, decoded);
 			args.push("--cookies", cookiePath);
 		} catch (e) {
-			// Fail silently if temp write fails
+			console.error("Failed to write YouTube cookies:", e);
 		}
 	}
 
 	return args;
 }
-
 function resolveYtDlpPath() {
 	if (process.env.YTDLP_PATH && fs.existsSync(process.env.YTDLP_PATH)) {
 		return process.env.YTDLP_PATH;

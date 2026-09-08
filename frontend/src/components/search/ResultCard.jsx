@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 function formatTime(t) {
 	const m = Math.floor(t / 60);
 	const s = Math.floor(t % 60);
@@ -11,6 +13,8 @@ export default function ResultCard({
 	onSelect,
 	thumbnailUrl,
 }) {
+	const [imgError, setImgError] = useState(false);
+
 	return (
 		<button
 			onClick={() => onSelect(result)}
@@ -22,11 +26,12 @@ export default function ResultCard({
 		>
 			{/* THUMBNAIL */}
 			<div className="w-[60px] h-[42px] sm:w-16 sm:h-11 rounded-[6px] overflow-hidden bg-cf-panel2 border border-cf-border shrink-0 flex items-center justify-center text-cf-muted">
-				{thumbnailUrl ? (
+				{thumbnailUrl && !imgError ? (
 					<img
 						src={thumbnailUrl}
 						alt=""
 						className="w-full h-full object-cover"
+						onError={() => setImgError(true)}
 					/>
 				) : (
 					"▶"

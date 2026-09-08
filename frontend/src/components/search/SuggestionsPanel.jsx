@@ -6,6 +6,7 @@ export default function SuggestionsPanel({
 	error,
 	selectedId,
 	onSelect,
+	thumbnailUrl,
 }) {
 	return (
 		<div className="flex flex-col h-full min-h-0">
@@ -32,9 +33,11 @@ export default function SuggestionsPanel({
 							suggestion={s}
 							selected={s.id === selectedId}
 							onSelect={onSelect}
+							thumbnailUrl={thumbnailUrl}
 						/>
 					))}
 			</div>
 		</div>
 	);
 }
+	

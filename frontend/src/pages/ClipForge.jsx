@@ -873,6 +873,11 @@ export default function ClipForge() {
 									error={suggestError}
 									selectedId={selectedResultId}
 									onSelect={applyClip}
+									thumbnailUrl={
+										video
+											? api.videoThumbnailUrl(video.id)
+											: null
+									}
 								/>
 							)}
 						</div>

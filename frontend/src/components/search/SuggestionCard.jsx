@@ -1,36 +1,64 @@
+import { useState } from "react";
+
 function formatTime(t) {
 	const m = Math.floor(t / 60);
 	const s = Math.floor(t % 60);
 	return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-export default function SuggestionCard({ suggestion, selected, onSelect }) {
+export default function SuggestionCard({
+	suggestion,
+	selected,
+	onSelect,
+	thumbnailUrl,
+}) {
+	const [imgError, setImgError] = useState(false);
+
 	return (
 		<button
 			onClick={() => onSelect(suggestion)}
-			className={`w-full text-left p-2.5 rounded-cf border transition ${
+			className={`w-full text-left flex gap-2 sm:gap-3 p-2 sm:p-2.5 rounded-cf border transition ${
 				selected
 					? "border-cf-yellow bg-cf-yellowDim"
 					: "border-cf-border hover:border-cf-yellow/40 hover:bg-cf-panel2"
 			}`}
 		>
-			<div className="flex items-center gap-1.5 text-[12px] font-medium">
-				<span>{suggestion.emoji}</span>
-				<span>{suggestion.label}</span>
+			{/* THUMBNAIL */}
+			<div className="w-[60px] h-[42px] sm:w-16 sm:h-11 rounded-[6px] overflow-hidden bg-cf-panel2 border border-cf-border shrink-0 flex items-center justify-center text-cf-muted">
+				{thumbnailUrl && !imgError ? (
+					<img
+						src={thumbnailUrl}
+						alt=""
+						className="w-full h-full object-cover"
+						onError={() => setImgError(true)}
+					/>
+				) : (
+					"▶"
+				)}
 			</div>
-			<div className="flex items-center justify-between mt-1">
-				<span
-					className={`text-[13px] tabular-nums ${selected ? "text-cf-yellow" : ""}`}
-				>
-					{formatTime(suggestion.start)}
-				</span>
-				<span className="text-[11px] text-cf-muted tabular-nums">
-					{suggestion.duration}s
-				</span>
+
+			{/* CONTENT */}
+			<div className="min-w-0 flex-1">
+				<div className="flex items-center gap-1.5 text-[12px] font-medium">
+					<span>{suggestion.emoji}</span>
+					<span className="truncate">{suggestion.label}</span>
+				</div>
+				<div className="flex items-center justify-between mt-0.5">
+					<span
+						className={`text-[12px] sm:text-[13px] tabular-nums ${
+							selected ? "text-cf-yellow" : ""
+						}`}
+					>
+						{formatTime(suggestion.start)}
+					</span>
+					<span className="text-[10px] sm:text-[11px] text-cf-muted tabular-nums">
+						{suggestion.duration}s
+					</span>
+				</div>
+				<p className="text-[11px] sm:text-[12px] text-cf-text/90 leading-snug mt-0.5 line-clamp-2 break-words">
+					{suggestion.text}
+				</p>
 			</div>
-			<p className="text-[12px] text-cf-text/90 leading-snug mt-1 line-clamp-2">
-				{suggestion.text}
-			</p>
 		</button>
 	);
 }

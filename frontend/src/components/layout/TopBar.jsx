@@ -28,7 +28,7 @@ export default function TopBar({ onSearch, onMood, activeMood, disabled }) {
 							style={{
 								filter: "drop-shadow(0 0 12px rgba(250, 204, 21, 1)) drop-shadow(0 0 4px rgba(255, 255, 255, 0.9))",
 							}}
-							src="../../../public/VidHntr_logo.svg"
+							src="/VidHntr_logo.svg"
 							alt="VidHntr Logo"
 						/>
 						<span className="font-custom font-black text-[16px] tracking-widest bg-gradient-to-r from-white via-white to-[#facc15] bg-clip-text text-transparent drop-shadow-[0_0_12px_rgba(250,204,21,0.6)]">
@@ -97,12 +97,14 @@ export default function TopBar({ onSearch, onMood, activeMood, disabled }) {
 					<div className="flex items-center justify-between gap-3">
 						{/* LOGO */}
 						<div className="flex items-center gap-2 min-w-0">
-							<div className="w-8 h-8 rounded-cf bg-cf-yellow flex items-center justify-center text-black text-base shrink-0">
-								🎬
-							</div>
+							<img
+								className="w-8 h-8 rounded-cf flex items-center justify-center shrink-0"
+								src="/VidHntr_logo.svg"
+								alt="VidHntr Logo"
+							/>
 
 							<span className="font-semibold text-[15px] tracking-tight">
-								ClipFinder
+								VidHntr
 							</span>
 						</div>
 

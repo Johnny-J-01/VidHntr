@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 import { api } from "../services/api.js";
 
-const TERMINAL = new Set(["READY", "ERROR", "CLOSED"]);
+const TERMINAL = new Set(["READY", "ERROR", "FAILED", "CLOSED"]);
 
 export function useExport() {
 	const [exportId, setExportId] = useState(null);

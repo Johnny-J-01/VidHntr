@@ -67,30 +67,17 @@ async function requestBlob(path) {
 }
 
 export const api = {
-	// Videos
 	listVideos: () => request("/videos"),
-
 	getVideo: (id) => request(`/videos/${id}`),
-
 	getVideoStatus: (id) => request(`/videos/${id}/status`),
-
 	getTranscript: (id) => request(`/videos/${id}/transcript`),
-
 	getVideoFile: (id) => requestBlob(`/videos/${id}/file`),
 
 	uploadVideo: (file, title) => {
 		const form = new FormData();
-
 		form.append("video", file);
-
-		if (title) {
-			form.append("title", title);
-		}
-
-		return request("/videos/upload", {
-			method: "POST",
-			body: form,
-		});
+		if (title) form.append("title", title);
+		return request("/videos/upload", { method: "POST", body: form });
 	},
 
 	addYouTube: (url) =>
@@ -99,11 +86,7 @@ export const api = {
 			body: JSON.stringify({ url }),
 		}),
 
-	deleteVideo: (id) =>
-		request(`/videos/${id}`, {
-			method: "DELETE",
-		}),
-
+	deleteVideo: (id) => request(`/videos/${id}`, { method: "DELETE" }),
 	getYouTubeInfo: (id) => request(`/videos/${id}/youtube`),
 
 	search: (videoId, query) =>
@@ -119,21 +102,19 @@ export const api = {
 		}),
 
 	getSuggestions: (videoId) =>
-		request(`/videos/${videoId}/suggestions`, {
-			method: "POST",
-		}),
+		request(`/videos/${videoId}/suggestions`, { method: "POST" }),
 
 	videoFileUrl: (id) => `${BASE}/videos/${id}/file`,
-
 	videoThumbnailUrl: (id) => `${BASE}/videos/${id}/thumbnail`,
 
-	// Exports
+	// Exports (Initiate job - returns 202 immediately)
 	createExport: (payload) =>
 		request("/exports", {
 			method: "POST",
 			body: JSON.stringify(payload),
 		}),
 
+	// Poll this endpoint instead of keeping a single connection open
 	getExportStatus: (id) => request(`/exports/${id}/status`),
 
 	exportDownloadUrl: (id) => `${BASE}/exports/${id}/download`,
@@ -143,3 +124,27 @@ export const api = {
 			method: "DELETE",
 		}),
 };
+
+// Example polling pattern for your frontend export trigger:
+async function handleExportWithPolling(payload, onProgress) {
+  // 1. Trigger the background export job
+  const { exportId } = await api.createExport(payload);
+  
+  // 2. Poll for status until completed or failed
+  while (true) {
+    await new Promise((resolve) => setTimeout(resolve, 2000)); // check every 2 seconds
+    const statusData = await api.getExportStatus(exportId);
+    
+    if (onProgress) {
+      onProgress(statusData.progress, statusData.status);
+    }
+    
+    if (statusData.status === "READY") {
+      return exportId;
+    }
+    
+    if (statusData.status === "FAILED" || statusData.status === "CLOSED") {
+      throw new Error(statusData.error || "Export processing failed.");
+    }
+  }
+}

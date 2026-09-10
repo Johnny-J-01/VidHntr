@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { useVideoStatus } from "../../hooks/useVideoStatus.js";
 
 const STATUS_LABEL = {
@@ -10,17 +11,68 @@ const STATUS_LABEL = {
 	ERROR: "Error",
 };
 
+function getExpirationMs(video) {
+	if (!video) return null;
+	if (video.expiresAt) {
+		const ms = new Date(video.expiresAt).getTime();
+		if (!isNaN(ms)) return ms;
+	}
+	if (video.createdAt) {
+		const ms = new Date(video.createdAt).getTime();
+		if (!isNaN(ms)) return ms + 15 * 60 * 1000;
+	}
+	return null;
+}
+
+function formatCountdown(seconds) {
+	if (seconds === null || seconds === undefined) return "";
+	if (seconds <= 0) return "Expired";
+	const mins = Math.floor(seconds / 60);
+	const secs = seconds % 60;
+	return `${mins}:${secs.toString().padStart(2, "0")}`;
+}
+
 export default function VideoListItem({
 	video,
 	selected,
 	onSelect,
 	onDelete,
 	onRetry,
+	onExpire,
 }) {
 	const { status, progress, error } = useVideoStatus(video.id, video.status);
 	const isBusy = !["READY", "ERROR"].includes(status);
 	const isError = status === "ERROR";
 	const label = STATUS_LABEL[status] || status;
+
+	const [timeLeft, setTimeLeft] = useState(() => {
+		const ms = getExpirationMs(video);
+		return ms ? Math.max(0, Math.floor((ms - Date.now()) / 1000)) : null;
+	});
+
+	useEffect(() => {
+		const expiryMs = getExpirationMs(video);
+		if (!expiryMs) {
+			setTimeLeft(null);
+			return;
+		}
+
+		const updateTimer = () => {
+			const remaining = Math.max(
+				0,
+				Math.floor((expiryMs - Date.now()) / 1000),
+			);
+			setTimeLeft(remaining);
+			if (remaining <= 0 && onExpire) {
+				onExpire(video.id);
+			}
+		};
+
+		updateTimer();
+		const interval = setInterval(updateTimer, 1000);
+
+		return () => clearInterval(interval);
+	}, [video, onExpire]);
 
 	return (
 		<div
@@ -112,6 +164,19 @@ export default function VideoListItem({
 				{video.ownerType === "guest" && (
 					<span className="rounded border border-cf-border px-1.5 py-0.5 text-[10px] text-cf-muted mr-1">
 						Guest
+					</span>
+				)}
+
+				{timeLeft !== null && (
+					<span
+						className={`rounded border px-1.5 py-0.5 text-[10px] font-mono mr-1 ${
+							timeLeft <= 60
+								? "border-red-500/40 text-red-400 bg-red-500/10 animate-pulse"
+								: "border-cf-border text-cf-muted"
+						}`}
+						title="Time until video expires"
+					>
+						⏱ {formatCountdown(timeLeft)}
 					</span>
 				)}
 

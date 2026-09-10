@@ -1,17 +1,32 @@
 import { useRef, useState } from "react";
+import { toast } from "react-hot-toast";
 
 export default function UploadCard({ onUpload }) {
 	const inputRef = useRef(null);
 	const [dragOver, setDragOver] = useState(false);
+	const [uploading, setUploading] = useState(false);
 
-	function handleFiles(files) {
+	async function handleFiles(files) {
 		const file = files?.[0];
-		if (file) onUpload(file);
+		if (!file || uploading) return;
+
+		setUploading(true);
+		try {
+			await onUpload(file);
+			toast.success(
+				"Video uploaded! Note: uploaded videos expire after 15 minutes.",
+				{ id: "upload-15m-toast" },
+			);
+		} catch (e) {
+			// Handled by parent onUpload
+		} finally {
+			setUploading(false);
+		}
 	}
 
 	return (
 		<div
-			onClick={() => inputRef.current?.click()}
+			onClick={() => !uploading && inputRef.current?.click()}
 			onDragOver={(e) => {
 				e.preventDefault();
 				setDragOver(true);
@@ -23,15 +38,19 @@ export default function UploadCard({ onUpload }) {
 				handleFiles(e.dataTransfer.files);
 			}}
 			className={`cf-panel border-dashed p-6 flex flex-col items-center justify-center gap-2 cursor-pointer text-center transition ${
+				uploading ? "opacity-60 pointer-events-none" : ""
+			} ${
 				dragOver
 					? "border-cf-yellow bg-cf-yellowDim"
 					: "hover:border-cf-yellow/40"
 			}`}
 		>
 			<div className="w-9 h-9 rounded-cf bg-cf-yellowDim text-cf-yellow flex items-center justify-center text-lg">
-				⭱
+				{uploading ? "…" : "⭱"}
 			</div>
-			<p className="text-sm font-medium">Upload Video</p>
+			<p className="text-sm font-medium">
+				{uploading ? "Uploading Video…" : "Upload Video"}
+			</p>
 			<p className="text-xs text-cf-muted">MP4, MOV, WebM up to 2GB</p>
 			<input
 				ref={inputRef}
@@ -39,6 +58,7 @@ export default function UploadCard({ onUpload }) {
 				accept="video/mp4,video/quicktime,video/webm,video/x-matroska"
 				className="hidden"
 				onChange={(e) => handleFiles(e.target.files)}
+				disabled={uploading}
 			/>
 		</div>
 	);

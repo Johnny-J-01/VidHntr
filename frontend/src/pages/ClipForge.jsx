@@ -86,12 +86,23 @@ export default function ClipForge() {
 			try {
 				const list = await api.listVideos();
 				const safeList = Array.isArray(list) ? list : [];
+				const now = Date.now();
+				const validList = safeList.filter((v) => {
+					let expiryMs = null;
+					if (v.expiresAt) {
+						expiryMs = new Date(v.expiresAt).getTime();
+					} else if (v.createdAt) {
+						expiryMs =
+							new Date(v.createdAt).getTime() + 15 * 60 * 1000;
+					}
+					return !expiryMs || isNaN(expiryMs) || expiryMs > now;
+				});
 
 				if (!cancelled) {
-					setVideos(safeList);
+					setVideos(validList);
 				}
 
-				return safeList;
+				return validList;
 			} catch (e) {
 				return [];
 			}
@@ -113,6 +124,49 @@ export default function ClipForge() {
 			clearInterval(interval);
 		};
 	}, []);
+
+	// Periodically remove expired videos from UI state and deselect if active
+	useEffect(() => {
+		const checkExpiration = () => {
+			const now = Date.now();
+			setVideos((prevVideos) => {
+				let expiredSelected = false;
+				const validVideos = prevVideos.filter((v) => {
+					let expiryMs = null;
+					if (v.expiresAt) {
+						expiryMs = new Date(v.expiresAt).getTime();
+					} else if (v.createdAt) {
+						expiryMs =
+							new Date(v.createdAt).getTime() + 15 * 60 * 1000;
+					}
+
+					const isExpired =
+						expiryMs && !isNaN(expiryMs) && now >= expiryMs;
+					if (isExpired && v.id === selectedId) {
+						expiredSelected = true;
+					}
+					return !isExpired;
+				});
+
+				if (validVideos.length !== prevVideos.length) {
+					if (expiredSelected) {
+						setTimeout(() => {
+							selectVideo(null);
+							showToast(
+								"The video has expired and was removed.",
+								"error",
+							);
+						}, 0);
+					}
+					return validVideos;
+				}
+				return prevVideos;
+			});
+		};
+
+		const timer = setInterval(checkExpiration, 1000);
+		return () => clearInterval(timer);
+	}, [selectedId]);
 
 	useEffect(() => {
 		if (!selectedId) {
@@ -416,9 +470,23 @@ export default function ClipForge() {
 		try {
 			const { videoId } = await api.uploadVideo(file, file.name);
 			const list = await api.listVideos();
-			setVideos(Array.isArray(list) ? list : []);
+			const safeList = Array.isArray(list) ? list : [];
+			const now = Date.now();
+			const validList = safeList.filter((v) => {
+				let expiryMs = null;
+				if (v.expiresAt) {
+					expiryMs = new Date(v.expiresAt).getTime();
+				} else if (v.createdAt) {
+					expiryMs = new Date(v.createdAt).getTime() + 15 * 60 * 1000;
+				}
+				return !expiryMs || isNaN(expiryMs) || expiryMs > now;
+			});
+
+			setVideos(validList);
 			selectVideo(videoId);
-			showToast("Video upload started.");
+			showToast(
+				"Video upload started. Note: videos expire after 15 minutes.",
+			);
 		} catch (error) {
 			showToast(
 				error.code === "VIDEO_LIMIT_REACHED"
@@ -435,7 +503,19 @@ export default function ClipForge() {
 		try {
 			const { videoId } = await api.addYouTube(url);
 			const list = await api.listVideos();
-			setVideos(Array.isArray(list) ? list : []);
+			const safeList = Array.isArray(list) ? list : [];
+			const now = Date.now();
+			const validList = safeList.filter((v) => {
+				let expiryMs = null;
+				if (v.expiresAt) {
+					expiryMs = new Date(v.expiresAt).getTime();
+				} else if (v.createdAt) {
+					expiryMs = new Date(v.createdAt).getTime() + 15 * 60 * 1000;
+				}
+				return !expiryMs || isNaN(expiryMs) || expiryMs > now;
+			});
+
+			setVideos(validList);
 			selectVideo(videoId);
 			showToast("YouTube video creation started.");
 		} catch (error) {

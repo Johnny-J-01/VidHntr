@@ -11,13 +11,18 @@ import { startCleanupScheduler } from "./services/storage/cleanupScheduler.js";
 const app = express();
 const PORT = process.env.PORT || 8787;
 
-const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || "http://localhost:5173";
-
 app.use(cors({
-  origin: ["https://vid-hntr.vercel.app", "http://localhost:5173"],
+  origin: (origin, callback) => {
+    if (!origin || origin.endsWith(".vercel.app") || origin.includes("localhost")) {
+      callback(null, true);
+    } else {
+      callback(null, true);
+    }
+  },
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   credentials: true
 }));
+
 app.use(express.json());
 
 app.use("/api/google-drive", googleDriveRouter);

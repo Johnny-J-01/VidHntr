@@ -13,6 +13,7 @@ export function useExport() {
 	const timer = useRef(null);
 	const activeExportId = useRef(null);
 	const videoId = useRef(null);
+	const retryCount = useRef(0);
 
 	const poll = useCallback((id) => {
 		async function tick() {
@@ -23,21 +24,28 @@ export function useExport() {
 					return;
 				}
 
+				retryCount.current = 0; // Reset consecutive error count on successful status check
 				setStatus(data.status);
 				setProgress(data.progress ?? 0);
 				setError(data.error || null);
 				setFilename(data.filename || null);
 
 				if (!TERMINAL.has(data.status)) {
-					timer.current = setTimeout(tick, 1200);
+					timer.current = setTimeout(tick, 1500);
 				}
 			} catch (e) {
 				if (activeExportId.current !== id) {
 					return;
 				}
 
-				setError(e.message);
-				timer.current = setTimeout(tick, 3000);
+				retryCount.current += 1;
+
+				// Allow up to 3 consecutive transient network drops before displaying UI error
+				if (retryCount.current > 3) {
+					setError(e.message || "Network error while checking export status.");
+				}
+
+				timer.current = setTimeout(tick, 2500);
 			}
 		}
 
@@ -51,6 +59,7 @@ export function useExport() {
 			setProgress(0);
 			setFilename(null);
 			setExportId(null);
+			retryCount.current = 0;
 
 			if (timer.current) {
 				clearTimeout(timer.current);
@@ -69,7 +78,7 @@ export function useExport() {
 				poll(data.exportId);
 			} catch (e) {
 				activeExportId.current = null;
-				setError(e.message);
+				setError(e.message || "Failed to start export.");
 				setStatus("ERROR");
 			}
 		},
@@ -86,6 +95,7 @@ export function useExport() {
 
 		activeExportId.current = null;
 		videoId.current = null;
+		retryCount.current = 0;
 
 		setExportId(null);
 		setStatus(null);

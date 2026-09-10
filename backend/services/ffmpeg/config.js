@@ -16,6 +16,7 @@ const FFPROBE_PATH = process.env.FFPROBE_PATH || (fs.existsSync(localFfprobe) ? 
 
 ffmpeg.setFfmpegPath(FFMPEG_PATH);
 ffmpeg.setFfprobePath(FFPROBE_PATH);
+
 function probeDuration(filePath) {
 	return new Promise((resolve, reject) => {
 		ffmpeg.ffprobe(filePath, (error, data) => {
@@ -89,6 +90,7 @@ function extractAudio(videoPath, audioOutPath) {
 			.audioCodec("libmp3lame")
 			.audioChannels(1)
 			.audioFrequency(16000)
+			.outputOptions(["-threads 1"])
 			.output(audioOutPath)
 			.on("end", () => resolve(audioOutPath))
 			.on("error", (error) => reject(error))
@@ -105,6 +107,7 @@ function generateThumbnail(videoPath, outDir, id, atSeconds = 3) {
 		});
 
 		ffmpeg(videoPath)
+			.outputOptions(["-threads 1"])
 			.on("end", () => resolve(path.join(outDir, filename)))
 			.on("error", (error) => reject(error))
 			.screenshots({
@@ -148,7 +151,6 @@ function buildSrtForRange(transcript, clipStart, clipEnd, outPath) {
 
 	const clipDuration = endLimit - startLimit;
 
-	// 1. Filter valid segments within clip range
 	const rawSegments = transcript
 		.filter((segment) => {
 			const s = Number(segment?.start);
@@ -169,7 +171,6 @@ function buildSrtForRange(transcript, clipStart, clipEnd, outPath) {
 		}))
 		.sort((a, b) => a.start - b.start);
 
-	// 2. Clean duplicates before calculating overlaps
 	const validSegments = [];
 	for (let i = 0; i < rawSegments.length; i += 1) {
 		const current = rawSegments[i];
@@ -184,7 +185,6 @@ function buildSrtForRange(transcript, clipStart, clipEnd, outPath) {
 		validSegments.push(current);
 	}
 
-	// 3. Build SRT entries
 	const lines = [];
 	for (let i = 0; i < validSegments.length; i += 1) {
 		const segment = validSegments[i];
@@ -243,18 +243,20 @@ function normalizeVideoSection(inputPath, outputPath, duration) {
 			.videoCodec("libx264")
 			.audioCodec("aac")
 			.outputOptions([
+				"-threads 1",
 				"-map 0:v:0",
 				"-map 0:a:0?",
 				"-pix_fmt yuv420p",
-				"-preset veryfast",
-				"-crf 18",
+				"-preset ultrafast",
+				"-crf 22",
 				"-c:a aac",
-				"-b:a 192k",
+				"-b:a 128k",
 				"-ar 48000",
 				"-ac 2",
 				"-start_at_zero",
 				"-avoid_negative_ts make_zero",
 				"-movflags +faststart",
+				"-max_muxing_queue_size 1024",
 			])
 			.output(outputPath)
 			.on("end", () => resolve(outputPath))
@@ -265,9 +267,9 @@ function normalizeVideoSection(inputPath, outputPath, duration) {
 
 const QUALITY_PRESETS = {
 	low: { crf: 28, preset: "ultrafast", audioBitrate: "128k" },
-	medium: { crf: 24, preset: "superfast", audioBitrate: "128k" },
-	high: { crf: 20, preset: "veryfast", audioBitrate: "192k" },
-	maximum: { crf: 18, preset: "fast", audioBitrate: "256k" },
+	medium: { crf: 25, preset: "ultrafast", audioBitrate: "128k" },
+	high: { crf: 22, preset: "superfast", audioBitrate: "160k" },
+	maximum: { crf: 20, preset: "superfast", audioBitrate: "192k" },
 };
 
 function buildFillFilter(width, height) {
@@ -279,7 +281,7 @@ function buildFillFilter(width, height) {
 
 	return [
 		`crop=w=${cropWidth}:h=${cropHeight}:x=${cropX}:y=${cropY}`,
-		`scale=w=${width}:h=${height}:flags=bicubic`,
+		`scale=w=${width}:h=${height}:flags=bilinear`,
 	];
 }
 
@@ -307,11 +309,6 @@ function buildCaptionFilter(captionsSrtPath, width, height) {
 	const escaped = escapeFilterPath(captionsSrtPath);
 	const isVertical = height && width ? height > width : false;
 
-	// Modern Social Media Caption Style:
-	// - BorderStyle=1: Clean text with black outline & deep drop shadow (No ugly blocky rectangle)
-	// - PrimaryColour=&H0015CCFA: Vibrant Yellow (#FACC15)
-	// - OutlineColour=&H00000000: Solid Black stroke for high contrast
-	// - FontName=Trebuchet MS / Arial Black: Punchy, readable font weight
 	const forceStyle = isVertical
 		? "FontName=Trebuchet MS,FontSize=14,Bold=1,PrimaryColour=&H0015CCFA,OutlineColour=&H00000000,BackColour=&H80000000,BorderStyle=1,Outline=3,Shadow=3,Alignment=2,MarginV=55"
 		: "FontName=Trebuchet MS,FontSize=14,Bold=1,PrimaryColour=&H0015CCFA,OutlineColour=&H00000000,BackColour=&H80000000,BorderStyle=1,Outline=2.5,Shadow=2.5,Alignment=2,MarginV=30";
@@ -359,6 +356,7 @@ function exportClip({
 					.videoFilters(filters)
 					.videoCodec("libx264")
 					.outputOptions([
+						"-threads 1",
 						"-map 0:v:0",
 						"-map 0:a:0?",
 						`-crf ${q.crf}`,
@@ -372,13 +370,13 @@ function exportClip({
 						"-start_at_zero",
 						"-movflags +faststart",
 						"-avoid_negative_ts make_zero",
+						"-max_muxing_queue_size 1024",
 					])
 					.output(outputPath);
 
 				command
 					.on("progress", (progress) => {
 						if (onProgress) {
-
 							onProgress(Math.min(100, progress.percent || 0));
 						}
 					})
@@ -396,8 +394,8 @@ function exportClip({
 				const filters = [
 					"[0:v]setpts=PTS-STARTPTS[vpts]",
 					"[vpts]split=2[bg][fg]",
-					`[bg]scale=w=${width}:h=${height}:force_original_aspect_ratio=increase:flags=lanczos,crop=${width}:${height},boxblur=luma_radius=20:luma_power=2[bgblur]`,
-					`[fg]scale=w=${width}:h=${height}:force_original_aspect_ratio=decrease:flags=lanczos[fgfit]`,
+					`[bg]scale=w=${width}:h=${height}:force_original_aspect_ratio=increase:flags=bilinear,crop=${width}:${height},boxblur=luma_radius=10:luma_power=1[bgblur]`,
+					`[fg]scale=w=${width}:h=${height}:force_original_aspect_ratio=decrease:flags=bilinear[fgfit]`,
 					"[bgblur][fgfit]overlay=(W-w)/2:(H-h)/2[composed]",
 				];
 
@@ -418,6 +416,7 @@ function exportClip({
 					.setDuration(duration)
 					.complexFilter(filters)
 					.outputOptions([
+						"-threads 1",
 						"-map [vout]",
 						"-map 0:a:0?",
 						"-vcodec libx264",
@@ -432,6 +431,7 @@ function exportClip({
 						"-start_at_zero",
 						"-movflags +faststart",
 						"-avoid_negative_ts make_zero",
+						"-max_muxing_queue_size 1024",
 					])
 					.output(outputPath);
 

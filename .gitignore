@@ -24,3 +24,4 @@ backend/storage/
 ffmpeg-*/
 cred
 backend/cred/
+backend/cookies.txt

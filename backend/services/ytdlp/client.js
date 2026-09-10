@@ -17,11 +17,16 @@ const YOUTUBE_URL_RE = /^(https?:\/\/)?(www\.)?(youtube\.com\/(watch\?v=|shorts\
 function getBypassArgs() {
 	const args = [
 		"--js-runtimes", "node",
-		"--extractor-args", "youtube:player_client=mweb,tv,web_creator",
+		"--extractor-args", "youtube:player_client=mweb,tv,web_creator,web",
 		"--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
 	];
 
-	if (process.env.YOUTUBE_COOKIES_BASE64) {
+	const localCookiePath = path.join(__dirname, "..", "..", "cookies.txt");
+
+	// Only pass cookies if the cookies file actually exists and is not empty
+	if (fs.existsSync(localCookiePath) && fs.statSync(localCookiePath).size > 0) {
+		args.push("--cookies", localCookiePath);
+	} else if (process.env.YOUTUBE_COOKIES_BASE64) {
 		const cookiePath = path.join("/tmp", "yt_cookies_fresh.txt");
 		try {
 			const decoded = Buffer.from(process.env.YOUTUBE_COOKIES_BASE64, "base64").toString("utf-8");

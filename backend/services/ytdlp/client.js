@@ -17,8 +17,8 @@ const YOUTUBE_URL_RE = /^(https?:\/\/)?(www\.)?(youtube\.com\/(watch\?v=|shorts\
 function getBypassArgs() {
 	const args = [
 		"--js-runtimes", "node",
-		"--extractor-args", "youtube:player_client=android,ios,mweb,web",
-		"--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+		"--extractor-args", "youtube:player_client=mweb,tv,web_creator",
+		"--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
 	];
 
 	if (process.env.YOUTUBE_COOKIES_BASE64) {

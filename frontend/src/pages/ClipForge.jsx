@@ -21,6 +21,9 @@ import { Toaster, toast } from "react-hot-toast";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 
 const TERMINAL = new Set(["READY", "ERROR"]);
+const YOUTUBE_INGESTION_DISABLED_CODE = "YOUTUBE_INGESTION_DISABLED";
+const YOUTUBE_INGESTION_DISABLED_MESSAGE =
+	"Direct YouTube processing is unavailable on the hosted version. Download the video and upload it directly instead.";
 
 export default function ClipForge() {
 	const [videos, setVideos] = useState([]);
@@ -520,14 +523,23 @@ export default function ClipForge() {
 			selectVideo(videoId);
 			showToast("YouTube video creation started.");
 		} catch (error) {
+			const message =
+				error.code === YOUTUBE_INGESTION_DISABLED_CODE
+					? YOUTUBE_INGESTION_DISABLED_MESSAGE
+					: error.code === "VIDEO_LIMIT_REACHED"
+						? error.ownerType === "guest"
+							? "Max upload limit reached, please login to upload more videos."
+							: "Max videos limit reached, Please delete the uploaded videos to add more"
+						: error.message;
+
 			showToast(
-				error.code === "VIDEO_LIMIT_REACHED"
-					? error.ownerType === "guest"
-						? "Max upload limit reached, please login to upload more videos."
-						: "Max videos limit reached, Please delete the uploaded videos to add more"
-					: error.message,
+				message,
 				"error",
 			);
+
+			const displayError = new Error(message);
+			displayError.code = error.code;
+			throw displayError;
 		}
 	}
 

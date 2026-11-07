@@ -466,9 +466,9 @@ export default function ClipForge() {
 		setTranscript([]);
 	}
 
-	async function handleUpload(file) {
+	async function handleUpload(file, onProgress) {
 		try {
-			const { videoId } = await api.uploadVideo(file, file.name);
+			const { videoId } = await api.uploadVideo(file, file.name, onProgress);
 			const list = await api.listVideos();
 			const safeList = Array.isArray(list) ? list : [];
 			const now = Date.now();
@@ -496,6 +496,7 @@ export default function ClipForge() {
 					: error.message,
 				"error",
 			);
+			throw error;
 		}
 	}
 

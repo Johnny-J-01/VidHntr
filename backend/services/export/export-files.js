@@ -7,7 +7,7 @@ const __dirname = path.dirname(__filename);
 
 const STORAGE = path.join(__dirname, "..", "..", "storage");
 
-const DIRS = {
+export const DIRS = {
 	uploads: path.join(STORAGE, "uploads"),
 	exports: path.join(STORAGE, "exports"),
 };

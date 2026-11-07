@@ -2,9 +2,9 @@
   "name": "backend",
   "version": "1.0.0",
   "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "chmod +x bin/yt-dlp && node app.js"
+	"scripts": {
+		"test": "node --test test/*.test.js",
+    "start": "node --watch scripts/prepare-ytdlp.js && node app.js"
   },
   "type": "module",
   "keywords": [],

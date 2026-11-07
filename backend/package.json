@@ -4,7 +4,7 @@
   "main": "index.js",
 	"scripts": {
 		"test": "node --test test/*.test.js",
-    "start": "node --watch scripts/prepare-ytdlp.js && node app.js"
+    "start": "node --watch app.js"
   },
   "type": "module",
   "keywords": [],

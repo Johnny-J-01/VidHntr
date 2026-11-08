@@ -6,6 +6,10 @@ import * as store from "../../db/videos.js";
 import jobs from "../../services/video/processing.js";
 import ytdlp from "../../services/ytdlp/client.js";
 import { authVideoExpiresAt, guestVideoExpiresAt } from "../../services/video/limits.js";
+import {
+	getYouTubeIngestionDisabledResponse,
+	isYouTubeIngestionEnabled,
+} from "../../services/video/youtube-ingestion-config.js";
 import { deleteVideoResources } from "../../services/storage/cleanup.js";
 import {
 	finalizeLocalUpload,
@@ -265,6 +269,10 @@ export const createYouTubeVideo = async (request, response) => {
 		return response
 			.status(400)
 			.json({ error: "That doesn't look like a valid YouTube URL." });
+	}
+
+	if (!isYouTubeIngestionEnabled()) {
+		return response.status(403).json(getYouTubeIngestionDisabledResponse());
 	}
 
 	const reservation = await reserveVideo(request, "youtube");

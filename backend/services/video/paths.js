@@ -9,6 +9,7 @@ const STORAGE = path.join(__dirname, "..", "..", "storage");
 
 const DIRS = {
 	uploads: path.join(STORAGE, "uploads"),
+	incomingUploads: path.join(STORAGE, "incoming-uploads"),
 	audio: path.join(STORAGE, "audio"),
 	transcripts: path.join(STORAGE, "transcripts"),
 	thumbnails: path.join(STORAGE, "thumbnails"),

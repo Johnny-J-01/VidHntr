@@ -6,7 +6,7 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const credentialsPath = path.join(__dirname, "..", "..", "cred", "client_secret_813336402888-rojh40sqhalkdq3lp3r4p58qk86etq09.apps.googleusercontent.com.json");
+const credentialsPath = path.join(__dirname, "..", "..", "cred", "client_secret_693162086571-1ql9q60ohrhjqf56bk3ek1b4goq82ich.apps.googleusercontent.com.json");
 const tokenPath = path.join(__dirname, "..", "..", "cred", "google-token.json");
 
 // 1. Automatically initialize token file from Base64 env variable if it exists on Render

@@ -8,6 +8,11 @@ import { clearRuntimeVideo } from "../../db/videos.js";
 import { DIRS as VIDEO_DIRS } from "../video/processing.js";
 import { deleteTemporaryExportFiles } from "../export/processing.js";
 
+const INCOMPLETE_UPLOAD_TTL_MS = Math.max(
+	1,
+	Number.parseInt(process.env.INCOMPLETE_UPLOAD_TTL_HOURS || "6", 10) || 6,
+) * 60 * 60 * 1000;
+
 async function deleteDriveFile(fileId) {
 	if (!fileId) return;
 
@@ -81,6 +86,34 @@ function deleteLocalVideoFiles(videoId) {
 		VIDEO_DIRS.transcripts,
 		videoId,
 	);
+
+	return deleted;
+}
+
+function cleanupStaleIncomingUploads() {
+	const directory = VIDEO_DIRS.incomingUploads;
+	if (!directory || !fs.existsSync(directory)) return 0;
+
+	const cutoff = Date.now() - INCOMPLETE_UPLOAD_TTL_MS;
+	let deleted = 0;
+
+	for (const filename of fs.readdirSync(directory)) {
+		if (!filename.endsWith(".uploading")) continue;
+
+		const filePath = path.join(directory, filename);
+		try {
+			const stats = fs.statSync(filePath);
+			if (!stats.isFile() || stats.mtimeMs > cutoff) continue;
+
+			fs.unlinkSync(filePath);
+			deleted += 1;
+			console.log(`Deleted stale incomplete upload: ${filePath}`);
+		} catch (error) {
+			if (error?.code !== "ENOENT") {
+				console.error(`Failed to remove stale incomplete upload ${filePath}:`, error);
+			}
+		}
+	}
 
 	return deleted;
 }
@@ -185,10 +218,11 @@ export async function deleteVideoResources(video) {
 export async function cleanupExpiredData() {
 	console.log("Starting expired data cleanup...");
 
+	const deletedIncompleteUploads = cleanupStaleIncomingUploads();
 	const deletedExports = await cleanupExpiredExports();
 	const deletedVideos = await cleanupExpiredVideos();
 
 	console.log(
-		`Cleanup complete: ${deletedExports} exports, ${deletedVideos} videos deleted.`,
+		`Cleanup complete: ${deletedIncompleteUploads} incomplete uploads, ${deletedExports} exports, ${deletedVideos} videos deleted.`,
 	);
 }

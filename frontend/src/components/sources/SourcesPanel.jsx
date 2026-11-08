@@ -10,7 +10,7 @@ export default function SourcesPanel({
 	onAddYouTube,
 	onDelete,
 	onRetry,
-	storage,
+	_storage,
 }) {
 	return (
 		<aside className="w-full h-full min-w-0 bg-cf-bg flex flex-col overflow-hidden">

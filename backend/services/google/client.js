@@ -2,7 +2,7 @@ import { google } from "googleapis";
 import { getAuthenticatedClient } from "./auth.js";
 
 export const DRIVE_FOLDER_ID =
-	"1KvDIRNFB4JQCZ4DmTBd77RZ3M2rwvNcD";
+	"1bejfJiPJ-NvgCfjRkYwqoSwbutfv3Es2";
 
 export function getDrive() {
 	const auth = getAuthenticatedClient();

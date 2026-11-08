@@ -73,11 +73,47 @@ export const api = {
 	getTranscript: (id) => request(`/videos/${id}/transcript`),
 	getVideoFile: (id) => requestBlob(`/videos/${id}/file`),
 
-	uploadVideo: (file, title) => {
+	uploadVideo: async (file, title, onProgress) => {
+		const { data: authData } = supabase
+			? await supabase.auth.getSession()
+			: { data: null };
 		const form = new FormData();
 		form.append("video", file);
 		if (title) form.append("title", title);
-		return request("/videos/upload", { method: "POST", body: form });
+
+		return new Promise((resolve, reject) => {
+			const xhr = new XMLHttpRequest();
+			xhr.open("POST", `${BASE}/videos/upload`);
+			xhr.withCredentials = true;
+			if (authData?.session?.access_token) {
+				xhr.setRequestHeader("Authorization", `Bearer ${authData.session.access_token}`);
+			}
+
+			xhr.upload.onprogress = (event) => {
+				if (event.lengthComputable && onProgress) {
+					onProgress(Math.round((event.loaded / event.total) * 100));
+				}
+			};
+			xhr.onerror = () => reject(new Error("Network error while uploading video."));
+			xhr.onabort = () => reject(new Error("Video upload was cancelled."));
+			xhr.onload = () => {
+				let data = {};
+				try {
+					data = xhr.responseText ? JSON.parse(xhr.responseText) : {};
+				} catch {
+					// A non-JSON proxy error still receives the generic HTTP error below.
+				}
+
+				if (xhr.status >= 200 && xhr.status < 300) return resolve(data);
+
+				const error = new Error(data.error || `Request failed (${xhr.status})`);
+				error.code = data.code;
+				error.status = xhr.status;
+				error.ownerType = data.ownerType;
+				reject(error);
+			};
+			xhr.send(form);
+		});
 	},
 
 	addYouTube: (url) =>
@@ -122,29 +158,5 @@ export const api = {
 	cleanupTemporaryExports: (videoId) =>
 		request(`/exports/video/${videoId}/temporary`, {
 			method: "DELETE",
-		}),
+	}),
 };
-
-// Example polling pattern for your frontend export trigger:
-async function handleExportWithPolling(payload, onProgress) {
-  // 1. Trigger the background export job
-  const { exportId } = await api.createExport(payload);
-  
-  // 2. Poll for status until completed or failed
-  while (true) {
-    await new Promise((resolve) => setTimeout(resolve, 2000)); // check every 2 seconds
-    const statusData = await api.getExportStatus(exportId);
-    
-    if (onProgress) {
-      onProgress(statusData.progress, statusData.status);
-    }
-    
-    if (statusData.status === "READY") {
-      return exportId;
-    }
-    
-    if (statusData.status === "FAILED" || statusData.status === "CLOSED") {
-      throw new Error(statusData.error || "Export processing failed.");
-    }
-  }
-}

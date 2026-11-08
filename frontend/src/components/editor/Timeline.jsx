@@ -14,7 +14,7 @@ function formatTickTime(t, showHours = false) {
 	return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-function calculateViewTicks(viewStart, viewEnd, duration) {
+function calculateViewTicks(viewStart, viewEnd, _duration) {
 	const viewSpan = Math.max(1, viewEnd - viewStart);
 
 	const steps = [
@@ -154,7 +154,7 @@ export default function Timeline({
 
 		try {
 			target.setPointerCapture(pointerId);
-		} catch (err) {}
+		} catch (_err) {}
 
 		function onMove(ev) {
 			if (!trackRef.current) return;
@@ -187,11 +187,11 @@ export default function Timeline({
 			}
 		}
 
-		function onUp(ev) {
+		function onUp(_ev) {
 			setDragging(null);
 			try {
 				target.releasePointerCapture(pointerId);
-			} catch (err) {}
+			} catch (_err) {}
 			window.removeEventListener("pointermove", onMove);
 			window.removeEventListener("pointerup", onUp);
 			window.removeEventListener("pointercancel", onUp);
@@ -389,7 +389,7 @@ export default function Timeline({
 							<div
 								className="absolute top-1 -translate-x-1/2 bg-black/90 border border-cf-yellow/50 text-cf-yellow text-[10px] font-mono px-1.5 py-0.5 rounded pointer-events-none z-20 shadow"
 								style={{
-									left: `${Math.max(30, Math.min(hoverX, trackRef.current?.clientWidth - 30 || hoverX))}px`,
+									left: `${hoverX}px`,
 								}}
 							>
 								{formatTickTime(hoverTime)}

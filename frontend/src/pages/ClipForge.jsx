@@ -106,7 +106,7 @@ export default function ClipForge() {
 				}
 
 				return validList;
-			} catch (e) {
+			} catch (_e) {
 				return [];
 			}
 		}
@@ -191,7 +191,7 @@ export default function ClipForge() {
 				if (!TERMINAL.has(v.status)) {
 					timer = setTimeout(poll, 2000);
 				}
-			} catch (e) {}
+			} catch (_e) {}
 		}
 
 		poll();
@@ -220,7 +220,7 @@ export default function ClipForge() {
 				if (!cancelled && Array.isArray(response?.transcript)) {
 					setTranscript(response.transcript);
 				}
-			} catch (e) {}
+			} catch (_e) {}
 		}
 
 		loadTranscript();
@@ -306,7 +306,7 @@ export default function ClipForge() {
 			if (youtubePlayerRef.current) {
 				try {
 					youtubePlayerRef.current.destroy();
-				} catch (e) {}
+				} catch (_e) {}
 
 				youtubePlayerRef.current = null;
 			}
@@ -419,7 +419,7 @@ export default function ClipForge() {
 			if (youtubePlayerRef.current) {
 				try {
 					youtubePlayerRef.current.destroy();
-				} catch (e) {}
+				} catch (_e) {}
 
 				youtubePlayerRef.current = null;
 			}

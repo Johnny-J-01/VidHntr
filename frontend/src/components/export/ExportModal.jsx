@@ -44,6 +44,7 @@ export default function ExportModal({
 	const [quality, setQuality] = useState("high");
 	const [captionsMode, setCaptionsMode] = useState(captions || "off");
 	const [cropMode, setCropMode] = useState("fill");
+	const [downloading, setDownloading] = useState(false);
 	useEffect(() => {
 		if (!open) {
 			setName(defaultName || "clip");
@@ -82,6 +83,17 @@ export default function ExportModal({
 		exportState.status && !["READY", "ERROR"].includes(exportState.status);
 
 	const done = exportState.status === "READY";
+
+	async function download() {
+		if (downloading) return;
+
+		setDownloading(true);
+		try {
+			await exportState.downloadExport();
+		} finally {
+			setDownloading(false);
+		}
+	}
 
 	return (
 		<div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
@@ -273,12 +285,15 @@ export default function ExportModal({
 					)}
 
 					{done ? (
-						<a
-							href={exportState.downloadUrl}
-							className="cf-btn-primary w-full py-2.5 text-sm text-center"
+						<button
+							onClick={download}
+							disabled={downloading}
+							className="cf-btn-primary w-full py-2.5 text-sm text-center disabled:opacity-60"
 						>
-							Download {exportState.filename || "clip"}
-						</a>
+							{downloading
+								? "Downloading…"
+								: `Download ${exportState.filename || "clip"}`}
+						</button>
 					) : (
 						<button
 							onClick={submit}

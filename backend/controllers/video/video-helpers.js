@@ -1,13 +1,26 @@
 export function canAccessVideo(request, video) {
 	if (!video) return false;
 
-	// Authenticated video: Only the owning user can access
 	if (video.userId) {
 		return Boolean(request.user && request.user.id === video.userId);
 	}
 
-	// Guest video: Viewable by anyone (both guests and logged-in users)
-	return true;
+	if (video.guestId) {
+		return Boolean(!request.user && request.guestId === video.guestId);
+	}
+
+	return false;
+}
+
+export function canAccessExport(request, exportJob, video) {
+	if (!exportJob || !video || exportJob.videoId !== video.id) return false;
+	if (!canAccessVideo(request, video)) return false;
+
+	if (video.userId) {
+		return exportJob.userId === video.userId;
+	}
+
+	return exportJob.guestId === video.guestId;
 }
 
 export function canDeleteVideo(request, video) {

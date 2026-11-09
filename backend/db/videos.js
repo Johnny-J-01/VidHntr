@@ -294,11 +294,21 @@ async function getVideo(id) {
 	return toVideoRecord(data);
 }
 
-async function listVideos() {
-	const { data, error } = await supabase
+async function listVideos({ userId = null, guestId = null } = {}) {
+	if (!userId && !guestId) return [];
+
+	let query = supabase
 		.from("videos")
 		.select()
 		.order("created_at", { ascending: false });
+
+	if (userId) {
+		query = query.eq("user_id", userId).is("guest_id", null);
+	} else {
+		query = query.is("user_id", null).eq("guest_id", guestId);
+	}
+
+	const { data, error } = await query;
 
 	if (error) throw error;
 

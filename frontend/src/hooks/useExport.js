@@ -113,18 +113,34 @@ export function useExport() {
 		}
 	}, []);
 
-	const downloadUrl = exportId
-		? api.exportDownloadUrl(exportId)
-		: null;
+	const downloadExport = useCallback(async () => {
+		if (!exportId) return;
+
+		setError(null);
+
+		try {
+			const file = await api.downloadExport(exportId);
+			const url = URL.createObjectURL(file);
+			const link = document.createElement("a");
+			link.href = url;
+			link.download = filename || "clip.mp4";
+			document.body.appendChild(link);
+			link.click();
+			link.remove();
+			URL.revokeObjectURL(url);
+		} catch (e) {
+			setError(e.message || "Failed to download export.");
+		}
+	}, [exportId, filename]);
 
 	return {
 		startExport,
 		resetExport,
+		downloadExport,
 		exportId,
 		status,
 		progress,
 		error,
-		downloadUrl,
 		filename,
 	};
 }

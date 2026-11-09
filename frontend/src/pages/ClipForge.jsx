@@ -29,6 +29,7 @@ export default function ClipForge() {
 	const [videos, setVideos] = useState([]);
 	const [selectedId, setSelectedId] = useState(null);
 	const [video, setVideo] = useState(null);
+	const [thumbnailUrl, setThumbnailUrl] = useState(null);
 
 	const [rightMode, setRightMode] = useState("search");
 	const [activeMood, setActiveMood] = useState(null);
@@ -72,6 +73,8 @@ export default function ClipForge() {
 
 	const suggestions = suggestionsByVideo[selectedId] || [];
 	const isYouTube = video?.sourceType === "youtube";
+	const selectedVideoId = video?.id;
+	const selectedVideoStatus = video?.status;
 
 	function showToast(message, tone = "success") {
 		const options = { id: message };
@@ -243,6 +246,36 @@ export default function ClipForge() {
 			}
 		};
 	}, [selectedId, video?.status]);
+
+	useEffect(() => {
+		setThumbnailUrl(null);
+
+		if (!selectedVideoId) return undefined;
+
+		let cancelled = false;
+		let objectUrl = null;
+
+		async function loadThumbnail() {
+			try {
+				const file = await api.getVideoThumbnail(selectedVideoId);
+
+				if (cancelled) return;
+
+				objectUrl = URL.createObjectURL(file);
+				setThumbnailUrl(objectUrl);
+			} catch (_e) {}
+		}
+
+		loadThumbnail();
+
+		return () => {
+			cancelled = true;
+
+			if (objectUrl) {
+				URL.revokeObjectURL(objectUrl);
+			}
+		};
+	}, [selectedVideoId, selectedVideoStatus]);
 
 	useEffect(() => {
 		if (!video || video.sourceType !== "youtube") {
@@ -953,11 +986,7 @@ export default function ClipForge() {
 									query={search.lastQuery}
 									selectedId={selectedResultId}
 									onSelect={applyClip}
-									thumbnailUrl={
-										video
-											? api.videoThumbnailUrl(video.id)
-											: null
-									}
+									thumbnailUrl={thumbnailUrl}
 								/>
 							) : (
 								<SuggestionsPanel
@@ -966,11 +995,7 @@ export default function ClipForge() {
 									error={suggestError}
 									selectedId={selectedResultId}
 									onSelect={applyClip}
-									thumbnailUrl={
-										video
-											? api.videoThumbnailUrl(video.id)
-											: null
-									}
+									thumbnailUrl={thumbnailUrl}
 								/>
 							)}
 						</div>

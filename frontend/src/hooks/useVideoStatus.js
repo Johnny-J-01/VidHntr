@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../services/api.js";
 
-const TERMINAL = new Set(["READY", "ERROR"]);
+const TERMINAL = new Set(["READY", "ERROR", "EXPIRED", "DELETING"]);
 
 export function useVideoStatus(videoId, initialStatus) {
 	const [status, setStatus] = useState(initialStatus || "QUEUED");
@@ -33,10 +33,15 @@ export function useVideoStatus(videoId, initialStatus) {
 					timer.current = setTimeout(poll, 1800);
 				}
 			} catch (e) {
-				if (!cancelled) {
-					setError(e.message);
-					timer.current = setTimeout(poll, 4000);
+				if (cancelled) return;
+
+				setError(e.message);
+				if (e.code === "VIDEO_EXPIRED") {
+					setStatus("EXPIRED");
+					return;
 				}
+
+				timer.current = setTimeout(poll, 4000);
 			}
 		}
 

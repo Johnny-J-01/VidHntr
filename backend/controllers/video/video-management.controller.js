@@ -5,16 +5,20 @@ import { v4 as uuid } from "uuid";
 import * as store from "../../db/videos.js";
 import jobs from "../../services/video/processing.js";
 import ytdlp from "../../services/ytdlp/client.js";
-import { authVideoExpiresAt, guestVideoExpiresAt } from "../../services/video/limits.js";
+import {
+	uploadSizeLimitForOwner,
+	uploadSizeLimitLabel,
+	videoExpiresAtForOwner,
+} from "../../services/video/limits.js";
 import {
 	getYouTubeIngestionDisabledResponse,
 	isYouTubeIngestionEnabled,
 } from "../../services/video/youtube-ingestion-config.js";
-import { deleteVideoResources } from "../../services/storage/cleanup.js";
+import { deleteVideoCompletely } from "../../services/storage/cleanup.js";
+import { hasExpired } from "../../services/storage/retention.js";
 import {
 	finalizeLocalUpload,
 	getTemporaryUploadPath,
-	MAX_UPLOAD_SIZE_BYTES,
 	removeLocalFile,
 	saveUploadedVideo,
 	UPLOAD_FORMATS,
@@ -30,7 +34,9 @@ async function reserveVideo(request, sourceType) {
 	const createdAt = Date.now();
 	const userId = request.user?.id ?? null;
 	const guestId = userId ? null : request.guestId;
-	const expiresAt = userId ? authVideoExpiresAt(createdAt) : guestVideoExpiresAt(createdAt);
+	const expiresAt = sourceType === "youtube"
+		? videoExpiresAtForOwner(userId, createdAt)
+		: null;
 	const reservation = await store.reserveVideoSlot({
 		id,
 		userId,
@@ -80,11 +86,11 @@ function resolveUploadMimeType(file) {
 	return mimeTypeByExtension[path.extname(file.originalname || "").toLowerCase()] || null;
 }
 
-function sendUploadError(response, error) {
+function sendUploadError(response, error, maximumSizeBytes) {
 	const isTooLarge = error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE";
 	const status = isTooLarge ? 413 : error.status || 400;
 	const message = isTooLarge
-		? "The uploaded video exceeds the 2 GB limit."
+		? `The uploaded video exceeds the ${uploadSizeLimitLabel(maximumSizeBytes)} limit.`
 		: error.message || "Upload failed.";
 
 	return response.status(status).json({ error: message });
@@ -113,45 +119,51 @@ export async function reserveUploadVideo(request, response, next) {
 	}
 }
 
-const upload = multer({
-	storage: multer.diskStorage({
-		destination: (request, file, callback) =>
-			callback(null, jobs.DIRS.incomingUploads),
+function createUploadMiddleware(maximumSizeBytes) {
+	return multer({
+		storage: multer.diskStorage({
+			destination: (request, file, callback) =>
+				callback(null, jobs.DIRS.incomingUploads),
 
-		filename: (request, file, callback) => {
-			const id = request.videoId || (request.videoId = uuid());
-			request.uploadTemporaryPath = getTemporaryUploadPath(
-				jobs.DIRS.incomingUploads,
-				id,
-			);
-			callback(null, path.basename(request.uploadTemporaryPath));
+			filename: (request, file, callback) => {
+				const id = request.videoId || (request.videoId = uuid());
+				request.uploadTemporaryPath = getTemporaryUploadPath(
+					jobs.DIRS.incomingUploads,
+					id,
+				);
+				callback(null, path.basename(request.uploadTemporaryPath));
+			},
+		}),
+
+		limits: {
+			fileSize: maximumSizeBytes,
 		},
-	}),
 
-	limits: {
-		fileSize: MAX_UPLOAD_SIZE_BYTES,
-	},
+		fileFilter: (request, file, callback) => {
+			const mimeType = resolveUploadMimeType(file);
+			if (!mimeType) {
+				callback(
+					new Error("Unsupported file type. Upload MP4, MOV, WebM, or MKV."),
+				);
+				return;
+			}
 
-	fileFilter: (request, file, callback) => {
-		const mimeType = resolveUploadMimeType(file);
-		if (!mimeType) {
-			callback(
-				new Error("Unsupported file type. Upload MP4, MOV, WebM, or MKV."),
-			);
-			return;
-		}
-
-		file.mimetype = mimeType;
-		callback(null, true);
-	},
-});
+			file.mimetype = mimeType;
+			callback(null, true);
+		},
+	}).single("video");
+}
 
 export const uploadVideo = (request, response) => {
-	upload.single("video")(request, response, async (error) => {
+	const maximumSizeBytes = uploadSizeLimitForOwner(
+		request.videoReservation.userId,
+	);
+
+	createUploadMiddleware(maximumSizeBytes)(request, response, async (error) => {
 		if (error) {
 			await cleanupTemporaryUpload(request);
 			if (request.videoId) await releaseReservation(request.videoId);
-			return sendUploadError(response, error);
+			return sendUploadError(response, error, maximumSizeBytes);
 		}
 
 		if (!request.file) {
@@ -171,11 +183,12 @@ export const uploadVideo = (request, response) => {
 				uploadDirectory: jobs.DIRS.uploads,
 				videoId: id,
 				mimeType: request.file.mimetype,
+				maximumSizeBytes,
 			});
 		} catch (validationError) {
 			await cleanupTemporaryUpload(request);
 			await releaseReservation(id);
-			return sendUploadError(response, validationError);
+			return sendUploadError(response, validationError, maximumSizeBytes);
 		}
 
 		const title = (
@@ -236,9 +249,25 @@ export const listVideos = async (request, response) => {
 		guestId: request.user ? null : request.guestId,
 	});
 
-	response.json(
-		videos.map((video) => publicVideoForRequest(request, video)),
-	);
+	const activeVideos = [];
+	for (const video of videos) {
+		if (
+			hasExpired(video.expiresAt) ||
+			video.status === "EXPIRED" ||
+			video.status === "DELETING"
+		) {
+			try {
+				await deleteVideoCompletely(video);
+			} catch (error) {
+				console.error(`Failed to clean expired video ${video.id}:`, error);
+			}
+			continue;
+		}
+
+		activeVideos.push(publicVideoForRequest(request, video));
+	}
+
+	response.json(activeVideos);
 };
 
 export const deleteVideo = async (request, response) => {
@@ -253,9 +282,7 @@ export const deleteVideo = async (request, response) => {
 	}
 
 	try {
-		await deleteVideoResources(video);
-		await store.deleteVideo(video.id);
-		store.clearRuntimeVideo(video.id);
+		await deleteVideoCompletely(video, "DELETING");
 		return response.status(204).end();
 	} catch (error) {
 		console.error(`Failed to delete video ${video.id}:`, error);

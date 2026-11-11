@@ -6,7 +6,11 @@ import ytdlp from "../ytdlp/client.js";
 import ffmpegSvc from "../ffmpeg/config.js";
 import { DIRS } from "./paths.js";
 import { parseSrtTranscript } from "./subtitles.js";
-import { markError, runAudioTranscriptionPipeline } from "./shared.js";
+import {
+	completeVideoTranscription,
+	markError,
+	runAudioTranscriptionPipeline,
+} from "./shared.js";
 
 async function runYouTubeCaptionPipeline(videoId, url, duration, title, language) {
 	const subtitleId = `${videoId}-youtube-subtitles`;
@@ -52,14 +56,10 @@ async function runYouTubeCaptionPipeline(videoId, url, duration, title, language
 			error: null,
 		});
 
-		await store.patchVideo(videoId, {
-			status: "READY",
-			progress: 100,
+		await completeVideoTranscription(videoId, transcript, {
 			duration,
 			title,
-			transcript,
 			transcriptPath: null,
-			error: null,
 		});
 
 		return true;

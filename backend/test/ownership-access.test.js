@@ -126,29 +126,29 @@ test("export access rejects mismatched parent videos and ownership records", () 
 	assert.equal(canAccessExport(authenticatedRequest(USER_A), { videoId: VIDEO_ID }, null), false);
 });
 
-test("requireVideoAccess allows owners without writing an error response", () => {
+test("requireVideoAccess allows owners without writing an error response", async () => {
 	const response = createResponse();
 
-	assert.equal(requireVideoAccess(authenticatedRequest(USER_A), response, userVideo()), true);
-	assert.equal(requireVideoAccess(guestRequest(GUEST_A), response, guestVideo()), true);
+	assert.equal(await requireVideoAccess(authenticatedRequest(USER_A), response, userVideo()), true);
+	assert.equal(await requireVideoAccess(guestRequest(GUEST_A), response, guestVideo()), true);
 	assert.equal(response.statusCode, null);
 	assert.equal(response.body, null);
 });
 
-test("requireVideoAccess rejects unauthorized requests without returning video data", () => {
+test("requireVideoAccess rejects unauthorized requests without returning video data", async () => {
 	const response = createResponse();
 
-	assert.equal(requireVideoAccess(authenticatedRequest(USER_B), response, userVideo()), false);
+	assert.equal(await requireVideoAccess(authenticatedRequest(USER_B), response, userVideo()), false);
 	assert.equal(response.statusCode, 403);
 	assert.deepEqual(response.body, { error: "You cannot access this video." });
 	assert.equal(Object.hasOwn(response.body, "video"), false);
 	assert.equal(Object.hasOwn(response.body, "transcript"), false);
 });
 
-test("requireVideoAccess returns 404 only when the video does not exist", () => {
+test("requireVideoAccess returns 404 only when the video does not exist", async () => {
 	const response = createResponse();
 
-	assert.equal(requireVideoAccess(authenticatedRequest(USER_A), response, null), false);
+	assert.equal(await requireVideoAccess(authenticatedRequest(USER_A), response, null), false);
 	assert.equal(response.statusCode, 404);
 	assert.deepEqual(response.body, { error: "Video not found." });
 });

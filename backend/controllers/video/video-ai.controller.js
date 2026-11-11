@@ -5,10 +5,10 @@ import { getTranscriptOrThrow, requireVideoAccess } from "./video-helpers.js";
 export const searchVideo = async (request, response) => {
 	const video = await store.getVideo(request.params.id);
 
-	if (!requireVideoAccess(request, response, video)) return;
+	if (!(await requireVideoAccess(request, response, video))) return;
 
 	try {
-		const transcript = getTranscriptOrThrow(video);
+		const transcript = await getTranscriptOrThrow(video);
 		const { query, mood } = request.body || {};
 
 		let results;
@@ -50,10 +50,10 @@ export const searchVideo = async (request, response) => {
 export const getVideoSuggestions = async (request, response) => {
 	const video = await store.getVideo(request.params.id);
 
-	if (!requireVideoAccess(request, response, video)) return;
+	if (!(await requireVideoAccess(request, response, video))) return;
 
 	try {
-		const transcript = getTranscriptOrThrow(video);
+		const transcript = await getTranscriptOrThrow(video);
 
 		const suggestions = await ai.suggestClips(
 			transcript,

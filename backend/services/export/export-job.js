@@ -5,6 +5,12 @@ import * as videos from "../../db/videos.js";
 import * as store from "../../db/exports.js";
 import ytdlp from "../ytdlp/client.js";
 import ffmpegSvc from "../ffmpeg/config.js";
+import {
+	ensureLocalSourceVideo,
+	loadVideoTranscript,
+	storeExportVideo,
+} from "../storage/video-files.js";
+import { exportExpiresAt } from "../video/limits.js";
 import { DIRS, deleteFile } from "./export-files.js";
 
 function sanitizeFilename(filename) {
@@ -74,12 +80,10 @@ export async function runExportJob(exportId) {
 		let exportEnd = exp.end;
 
 		if (video.sourceType === "upload") {
-			sourcePath = video.filePath;
+			sourcePath = await ensureLocalSourceVideo(video);
 
-			if (!sourcePath || !fs.existsSync(sourcePath)) {
-				throw new Error(
-					"Original uploaded video is no longer available locally.",
-				);
+			if (sourcePath !== video.filePath) {
+				await videos.patchVideo(video.id, { filePath: sourcePath });
 			}
 
 			await store.patchExport(exportId, {
@@ -217,17 +221,18 @@ export async function runExportJob(exportId) {
 			);
 		}
 
-		if (
-			exp.captions === "burn" &&
-			Array.isArray(video.transcript)
-		) {
+		const transcript = exp.captions === "burn"
+			? await loadVideoTranscript(video)
+			: null;
+
+		if (exp.captions === "burn" && Array.isArray(transcript)) {
 			captionsSrtPath = path.join(
 				DIRS.exports,
 				`${exportId}.srt`,
 			);
 
 			ffmpegSvc.buildSrtForRange(
-				video.transcript,
+				transcript,
 				exp.start,
 				exp.end,
 				captionsSrtPath,
@@ -323,19 +328,25 @@ export async function runExportJob(exportId) {
 			return;
 		}
 
+		const driveFile = await storeExportVideo(video, latestExport, outputPath);
+		const expiresAt = exportExpiresAt(Date.now());
+
 		await store.patchExport(exportId, {
 			status: "READY",
 			progress: 100,
-			outputPath,
+			driveFileId: driveFile.id,
+			expiresAt,
+			outputPath: null,
 			filename,
 			error: null,
 		});
 
+		deleteFile(outputPath);
 		deleteFile(captionsSrtPath);
 		deleteFile(temporaryVideoPath);
 		deleteFile(normalizedVideoPath);
 
-		console.log(`Export ${exportId} is ready: ${outputPath}`);
+		console.log(`Export ${exportId} is ready in Google Drive: ${driveFile.id}`);
 	} catch (error) {
 		console.error(`Export ${exportId} failed:`, error);
 

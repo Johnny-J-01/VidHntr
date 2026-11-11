@@ -1,11 +1,16 @@
 import { v4 as uuid } from "uuid";
-import fs from "fs";
 
 import * as videos from "../db/videos.js";
 import * as store from "../db/exports.js";
 import jobs, {
 	deleteTemporaryExportFiles,
 } from "../services/export/processing.js";
+import { getFileStream } from "../services/google/drive.js";
+import { deleteExportCompletely } from "../services/storage/cleanup.js";
+import {
+	EXPORT_EXPIRED_MESSAGE,
+	hasExpired,
+} from "../services/storage/retention.js";
 import {
 	canAccessExport,
 	requireVideoAccess,
@@ -14,7 +19,7 @@ import {
 const QUALITIES = new Set(["low", "medium", "high", "maximum"]);
 const CROP_MODES = new Set(["fill", "fit"]);
 
-async function requireExportAccess(request, response, exp) {
+export async function requireExportAccess(request, response, exp) {
 	if (!exp) {
 		response.status(404).json({ error: "Export not found." });
 		return null;
@@ -28,6 +33,22 @@ async function requireExportAccess(request, response, exp) {
 
 	if (!canAccessExport(request, exp, video)) {
 		response.status(403).json({ error: "You cannot access this export." });
+		return null;
+	}
+
+	if (!(await requireVideoAccess(request, response, video))) return null;
+
+	if (hasExpired(exp.expiresAt) || exp.status === "EXPIRED") {
+		try {
+			await deleteExportCompletely(exp);
+		} catch (error) {
+			console.error(`Failed to clean expired export ${exp.id}:`, error);
+		}
+
+		response.status(410).json({
+			error: EXPORT_EXPIRED_MESSAGE,
+			code: "EXPORT_EXPIRED",
+		});
 		return null;
 	}
 
@@ -49,7 +70,7 @@ export const createExport = async (request, response) => {
 
 	const video = await videos.getVideo(videoId);
 
-	if (!requireVideoAccess(request, response, video)) return;
+	if (!(await requireVideoAccess(request, response, video))) return;
 
 	const clipStart = Number(start);
 	const clipEnd = Number(end);
@@ -128,7 +149,7 @@ export const createExport = async (request, response) => {
 		filename: null,
 		error: null,
 		createdAt: Date.now(),
-		expiresAt: video.expiresAt || Date.now() + 24 * 60 * 60 * 1000,
+		expiresAt: null,
 	});
 
 	response.status(202).json({
@@ -149,6 +170,7 @@ export const getExportStatus = async (request, response) => {
 		status: exp.status,
 		progress: exp.progress ?? 0,
 		filename: exp.filename || null,
+		expiresAt: exp.expiresAt || null,
 		error: exp.error || null,
 	});
 };
@@ -164,16 +186,16 @@ export const downloadExport = async (request, response) => {
 		});
 	}
 
-	if (!exp.outputPath || !fs.existsSync(exp.outputPath)) {
+	if (!exp.driveFileId) {
 		return response.status(404).json({
 			error: "Export file not found.",
 		});
 	}
 
-	response.download(
-		exp.outputPath,
-		exp.filename || "clip.mp4",
-	);
+	response.attachment(exp.filename || "clip.mp4");
+	const stream = await getFileStream(exp.driveFileId);
+	stream.on("error", (error) => response.destroy(error));
+	return stream.pipe(response);
 };
 
 export const cleanupTemporaryExports = async (request, response) => {
@@ -181,25 +203,21 @@ export const cleanupTemporaryExports = async (request, response) => {
 
 	try {
 		const video = await videos.getVideo(videoId);
-		if (!requireVideoAccess(request, response, video)) return;
+		if (!(await requireVideoAccess(request, response, video))) return;
 
 		const exports = await store.listExportsByVideoId(videoId);
 
+		let cleaned = 0;
 		for (const exportJob of exports) {
-			await store.patchExport(exportJob.id, {
-				status: "CLOSED",
-				outputPath: null,
-			});
+			if (exportJob.status !== "READY" && exportJob.status !== "FAILED") {
+				continue;
+			}
 
 			deleteTemporaryExportFiles(exportJob.id);
-
-			store.clearRuntimeExport(exportJob.id);
+			cleaned += 1;
 		}
 
-		return response.json({
-			success: true,
-			cleaned: exports.length,
-		});
+		return response.json({ success: true, cleaned });
 	} catch (error) {
 		console.error(
 			`Failed to clean temporary exports for video ${videoId}:`,

@@ -66,6 +66,7 @@ export function exportClip({
 	quality = "high",
 	cropMode = "fill",
 	captionsSrtPath = null,
+	inputOptions = [],
 	onProgress,
 }) {
 	return new Promise((resolve, reject) => {
@@ -90,7 +91,7 @@ export function exportClip({
 				}
 
 				const command = ffmpeg(sourcePath)
-					.inputOptions(["-accurate_seek"])
+					.inputOptions([...inputOptions, "-accurate_seek"])
 					.setStartTime(start)
 					.setDuration(duration)
 					.videoFilters(filters)
@@ -151,7 +152,7 @@ export function exportClip({
 				}
 
 				const command = ffmpeg(sourcePath)
-					.inputOptions(["-accurate_seek"])
+					.inputOptions([...inputOptions, "-accurate_seek"])
 					.setStartTime(start)
 					.setDuration(duration)
 					.complexFilter(filters)

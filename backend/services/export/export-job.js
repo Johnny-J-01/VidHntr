@@ -5,13 +5,20 @@ import * as videos from "../../db/videos.js";
 import * as store from "../../db/exports.js";
 import ytdlp from "../ytdlp/client.js";
 import ffmpegSvc from "../ffmpeg/config.js";
+import { getAuthenticatedClient } from "../google/auth.js";
+import { downloadFileToPath } from "../google/drive.js";
 import {
 	ensureLocalSourceVideo,
 	loadVideoTranscript,
 	storeExportVideo,
 } from "../storage/video-files.js";
 import { exportExpiresAt } from "../video/limits.js";
-import { DIRS, deleteFile } from "./export-files.js";
+import {
+	DIRS,
+	deleteFile,
+	deleteExportWorkDir,
+	getExportWorkDir,
+} from "./export-files.js";
 
 function sanitizeFilename(filename) {
 	return (
@@ -41,6 +48,7 @@ export async function runExportJob(exportId) {
 	let captionsSrtPath = null;
 	let temporaryVideoPath = null;
 	let normalizedVideoPath = null;
+	const workDir = getExportWorkDir(exportId);
 
 	try {
 		const exp = await store.getExport(exportId);
@@ -76,14 +84,50 @@ export async function runExportJob(exportId) {
 		});
 
 		let sourcePath = null;
+		let inputOptions = [];
 		let exportStart = exp.start;
 		let exportEnd = exp.end;
 
 		if (video.sourceType === "upload") {
-			sourcePath = await ensureLocalSourceVideo(video);
+			// Check if local file still exists
+			if (video.filePath && fs.existsSync(video.filePath)) {
+				sourcePath = video.filePath;
+				console.log(`Using existing local video for export ${exportId}: ${sourcePath}`);
+			} else if (video.driveFileId) {
+				// Try remote Google Drive reading first
+				try {
+					const authClient = getAuthenticatedClient();
+					const tokenResponse = await authClient?.getAccessToken?.();
+					const token = tokenResponse?.token;
 
-			if (sourcePath !== video.filePath) {
-				await videos.patchVideo(video.id, { filePath: sourcePath });
+					if (token) {
+						const remoteUrl = `https://www.googleapis.com/drive/v3/files/${video.driveFileId}?alt=media`;
+						const remoteOptions = [
+							"-headers",
+							`Authorization: Bearer ${token}\r\n`,
+							"-seekable",
+							"1",
+						];
+
+						// Verify that FFmpeg/probe can read the remote stream
+						await ffmpegSvc.probeStreams(remoteUrl, remoteOptions);
+						sourcePath = remoteUrl;
+						inputOptions = remoteOptions;
+						console.log(`Using remote Google Drive input for export ${exportId}`);
+					} else {
+						throw new Error("Google Drive access token unavailable.");
+					}
+				} catch (remoteError) {
+					console.warn(
+						`Direct remote Google Drive reading failed for export ${exportId}; falling back to scoped local download:`,
+						remoteError.message,
+					);
+					// Fallback: download original video into this export's isolated workDir ONLY
+					const localFallbackPath = path.join(workDir, `${video.id}_source.mp4`);
+					sourcePath = await downloadFileToPath(video.driveFileId, localFallbackPath);
+				}
+			} else {
+				throw new Error("Original uploaded video is not available in Google Drive.");
 			}
 
 			await store.patchExport(exportId, {
@@ -98,7 +142,7 @@ export async function runExportJob(exportId) {
 
 			const result = await ytdlp.downloadYouTubeVideoSection(
 				video.sourceUrl,
-				DIRS.uploads,
+				workDir,
 				temporaryId,
 				exp.start,
 				exp.end,
@@ -125,7 +169,7 @@ export async function runExportJob(exportId) {
 			}
 
 			normalizedVideoPath = path.join(
-				DIRS.uploads,
+				workDir,
 				`${temporaryId}-normalized.mp4`,
 			);
 
@@ -152,68 +196,16 @@ export async function runExportJob(exportId) {
 			await store.patchExport(exportId, {
 				progress: 50,
 			});
-
-			try {
-				const timing = await ffmpegSvc.probeTiming(
-					normalizedVideoPath,
-				);
-
-				console.log(
-					"\n================ NORMALIZED YOUTUBE TIMING ==================",
-				);
-
-				console.log("Export ID:", exportId);
-				console.log("Video ID:", video.id);
-
-				console.log("\nRequested original range:");
-				console.log("  start:", exp.start);
-				console.log("  end:", exp.end);
-				console.log("  requested duration:", clipDuration);
-
-				console.log("\nNormalized clip:");
-				console.log("  file:", normalizedVideoPath);
-				console.log(
-					"  format start_time:",
-					timing.formatStartTime,
-				);
-				console.log(
-					"  format duration:",
-					timing.formatDuration,
-				);
-
-				console.log("\nStreams:");
-
-				for (const stream of timing.streams) {
-					console.log({
-						index: stream.index,
-						type: stream.codecType,
-						codec: stream.codecName,
-						start_time: stream.startTime,
-						duration: stream.duration,
-						time_base: stream.timeBase,
-						avg_frame_rate: stream.avgFrameRate,
-						r_frame_rate: stream.rFrameRate,
-					});
-				}
-
-				console.log(
-					"\n=============================================================\n",
-				);
-			} catch (diagnosticError) {
-				console.error(
-					"Normalized timing diagnostic failed:",
-					diagnosticError,
-				);
-			}
 		} else {
 			throw new Error("Unsupported video source type.");
 		}
 
-		if (!sourcePath || !fs.existsSync(sourcePath)) {
+		const isRemoteSource = typeof sourcePath === "string" && /^https?:\/\//i.test(sourcePath);
+		if (!sourcePath || (!isRemoteSource && !fs.existsSync(sourcePath))) {
 			throw new Error("Export source video is not available.");
 		}
 
-		const streams = await ffmpegSvc.probeStreams(sourcePath);
+		const streams = await ffmpegSvc.probeStreams(sourcePath, inputOptions);
 
 		if (!streams.hasVideo) {
 			throw new Error(
@@ -227,7 +219,7 @@ export async function runExportJob(exportId) {
 
 		if (exp.captions === "burn" && Array.isArray(transcript)) {
 			captionsSrtPath = path.join(
-				DIRS.exports,
+				workDir,
 				`${exportId}.srt`,
 			);
 
@@ -237,40 +229,6 @@ export async function runExportJob(exportId) {
 				exp.end,
 				captionsSrtPath,
 			);
-
-			try {
-				const srtContent = fs.readFileSync(
-					captionsSrtPath,
-					"utf8",
-				);
-
-				console.log(
-					"\n================ SRT TIMING DIAGNOSTIC ====================",
-				);
-
-				console.log("Export ID:", exportId);
-				console.log("Original start:", exp.start);
-				console.log("Original end:", exp.end);
-				console.log("Clip duration:", clipDuration);
-
-				console.log("\nFirst SRT entries:");
-
-				console.log(
-					srtContent
-						.split(/\r?\n\r?\n/)
-						.slice(0, 5)
-						.join("\n\n"),
-				);
-
-				console.log(
-					"\n=============================================================\n",
-				);
-			} catch (diagnosticError) {
-				console.error(
-					"SRT diagnostic failed:",
-					diagnosticError,
-				);
-			}
 		}
 
 		const filename = buildExportFilename(
@@ -280,7 +238,7 @@ export async function runExportJob(exportId) {
 		);
 
 		outputPath = path.join(
-			DIRS.exports,
+			workDir,
 			`${exportId}_${filename}`,
 		);
 
@@ -294,6 +252,7 @@ export async function runExportJob(exportId) {
 			quality: exp.quality,
 			cropMode: exp.cropMode || "fill",
 			captionsSrtPath,
+			inputOptions,
 			onProgress: async (progress) => {
 				const mappedProgress = isYouTube
 					? 50 + Math.round(progress * 0.5)
@@ -321,10 +280,7 @@ export async function runExportJob(exportId) {
 		const latestExport = await store.getExport(exportId);
 
 		if (!latestExport || latestExport.status === "CLOSED") {
-			deleteFile(outputPath);
-			deleteFile(captionsSrtPath);
-			deleteFile(temporaryVideoPath);
-			deleteFile(normalizedVideoPath);
+			deleteExportWorkDir(exportId);
 			return;
 		}
 
@@ -341,19 +297,13 @@ export async function runExportJob(exportId) {
 			error: null,
 		});
 
-		deleteFile(outputPath);
-		deleteFile(captionsSrtPath);
-		deleteFile(temporaryVideoPath);
-		deleteFile(normalizedVideoPath);
+		deleteExportWorkDir(exportId);
 
 		console.log(`Export ${exportId} is ready in Google Drive: ${driveFile.id}`);
 	} catch (error) {
 		console.error(`Export ${exportId} failed:`, error);
 
-		deleteFile(outputPath);
-		deleteFile(captionsSrtPath);
-		deleteFile(temporaryVideoPath);
-		deleteFile(normalizedVideoPath);
+		deleteExportWorkDir(exportId);
 
 		try {
 			const currentExport = await store.getExport(exportId);

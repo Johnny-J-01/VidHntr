@@ -115,11 +115,21 @@ function toSupabasePatch(patch) {
 async function upsertExport(exportJob) {
 	rememberRuntimeFields(exportJob.id, exportJob);
 
-	const { data, error } = await supabase
+	const payload = toSupabaseExport(exportJob);
+	let { data, error } = await supabase
 		.from("exports")
-		.upsert(toSupabaseExport(exportJob))
+		.upsert(payload)
 		.select()
 		.single();
+
+	if (error && (error.code === "23502" || String(error.message).includes("not-null") || String(error.message).includes("null value in column \"expires_at\""))) {
+		payload.expires_at = toIsoTimestamp(Date.now() + 30 * 60 * 1000);
+		({ data, error } = await supabase
+			.from("exports")
+			.upsert(payload)
+			.select()
+			.single());
+	}
 
 	if (error) throw error;
 

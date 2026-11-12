@@ -176,9 +176,13 @@ function toVideoRecord(row) {
 		duration: row.duration === null ? null : Number(row.duration),
 		status: row.status,
 		progress: row.progress,
-		transcript: runtimeTranscripts.has(row.id)
+		storageStatus: row.storage_status || (row.drive_file_id ? "STORED" : "PENDING"),
+		transcriptionStatus: row.transcription_status || (row.transcript_file_id ? "COMPLETED" : "PENDING"),
+		thumbnailStatus: row.thumbnail_status || (row.thumbnail_file_id ? "STORED" : "PENDING"),
+		metadata: row.metadata || null,
+		transcript: row.transcript ?? (runtimeTranscripts.has(row.id)
 			? runtimeTranscripts.get(row.id)
-			: row.transcript,
+			: null),
 		error: row.error,
 		createdAt: toTimestamp(row.created_at),
 		expiresAt: toTimestamp(row.expires_at),
@@ -205,6 +209,11 @@ function toSupabaseVideo(video) {
 		duration: video.duration ?? null,
 		status: video.status,
 		progress: video.progress ?? 0,
+		storage_status: video.storageStatus ?? (video.driveFileId ? "STORED" : "PENDING"),
+		transcription_status: video.transcriptionStatus ?? (video.transcriptFileId ? "COMPLETED" : "PENDING"),
+		thumbnail_status: video.thumbnailStatus ?? (video.thumbnailFileId ? "STORED" : "PENDING"),
+		metadata: video.metadata ?? null,
+		transcript: video.transcript ?? null,
 		drive_file_id: video.driveFileId ?? null,
 		drive_folder_id: video.driveFolderId ?? null,
 		thumbnail_file_id: video.thumbnailFileId ?? null,
@@ -228,6 +237,11 @@ function toSupabasePatch(patch) {
 		duration: "duration",
 		status: "status",
 		progress: "progress",
+		storageStatus: "storage_status",
+		transcriptionStatus: "transcription_status",
+		thumbnailStatus: "thumbnail_status",
+		metadata: "metadata",
+		transcript: "transcript",
 		driveFileId: "drive_file_id",
 		driveFolderId: "drive_folder_id",
 		thumbnailFileId: "thumbnail_file_id",
@@ -256,14 +270,42 @@ function toSupabasePatch(patch) {
 	return update;
 }
 
+const OPTIONAL_COLUMNS = [
+	"storage_status",
+	"transcription_status",
+	"thumbnail_status",
+	"metadata",
+	"transcript",
+];
+
+function isMissingColumnError(error) {
+	if (!error) return false;
+	const code = String(error.code || "");
+	const message = String(error.message || "");
+	return code === "PGRST204" || code === "42703" || message.toLowerCase().includes("column");
+}
+
 async function upsertVideo(video) {
 	rememberRuntimePaths(video.id, video);
 
-	const { data, error } = await supabase
+	const payload = toSupabaseVideo(video);
+	let { data, error } = await supabase
 		.from("videos")
-		.upsert(toSupabaseVideo(video))
+		.upsert(payload)
 		.select()
 		.single();
+
+	if (error && isMissingColumnError(error)) {
+		const fallbackPayload = { ...payload };
+		for (const col of OPTIONAL_COLUMNS) {
+			delete fallbackPayload[col];
+		}
+		({ data, error } = await supabase
+			.from("videos")
+			.upsert(fallbackPayload)
+			.select()
+			.single());
+	}
 
 	if (error) throw error;
 
@@ -362,12 +404,29 @@ async function patchVideo(id, patch) {
 		return getVideo(id);
 	}
 
-	const { data, error } = await supabase
+	let { data, error } = await supabase
 		.from("videos")
 		.update(update)
 		.eq("id", id)
 		.select()
 		.maybeSingle();
+
+	if (error && isMissingColumnError(error)) {
+		const fallbackUpdate = { ...update };
+		for (const col of OPTIONAL_COLUMNS) {
+			delete fallbackUpdate[col];
+		}
+		if (Object.keys(fallbackUpdate).length > 0) {
+			({ data, error } = await supabase
+				.from("videos")
+				.update(fallbackUpdate)
+				.eq("id", id)
+				.select()
+				.maybeSingle());
+		} else {
+			return getVideo(id);
+		}
+	}
 
 	if (error) throw error;
 

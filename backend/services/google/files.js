@@ -81,13 +81,17 @@ export async function getFile(fileId) {
 	return response.data;
 }
 
-export async function getFileStream(fileId) {
+export async function getFileStream(fileId, options = {}) {
 	if (!fileId) throw new Error("Google Drive file ID is required.");
 
-	const response = await getDrive().files.get(
-		{ fileId, alt: "media" },
-		{ responseType: "stream" },
-	);
+	const requestParams = { fileId, alt: "media" };
+	const requestOptions = { responseType: "stream" };
+
+	if (options.range) {
+		requestOptions.headers = { Range: options.range };
+	}
+
+	const response = await getDrive().files.get(requestParams, requestOptions);
 
 	return response.data;
 }

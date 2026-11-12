@@ -44,17 +44,26 @@ const VideoPlayer = forwardRef(function VideoPlayer(
 
 		async function loadSource() {
 			try {
-				const file = await api.getVideoFile(videoId);
-				objectUrl = URL.createObjectURL(file);
+				const playbackUrl = await api.getVideoPlaybackUrl(videoId);
 
 				if (!cancelled) {
-					setSourceUrl(objectUrl);
+					setSourceUrl(playbackUrl);
 				}
-			} catch (error) {
-				if (!cancelled) {
-					setSourceError(
-						error.message || "Video playback could not be loaded.",
-					);
+			} catch (playbackError) {
+				// Fallback to blob if ticket fetch fails
+				try {
+					const file = await api.getVideoFile(videoId);
+					objectUrl = URL.createObjectURL(file);
+
+					if (!cancelled) {
+						setSourceUrl(objectUrl);
+					}
+				} catch (error) {
+					if (!cancelled) {
+						setSourceError(
+							error.message || "Video playback could not be loaded.",
+						);
+					}
 				}
 			}
 		}
@@ -275,6 +284,7 @@ const VideoPlayer = forwardRef(function VideoPlayer(
 				<video
 					ref={ref}
 					src={sourceUrl || undefined}
+					crossOrigin="use-credentials"
 					onError={() =>
 						setSourceError("Video playback could not be loaded.")
 					}

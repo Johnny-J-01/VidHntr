@@ -34,6 +34,7 @@ export async function completeVideoTranscription(
 		...runtimePatch,
 		...fileIds,
 		status: "READY",
+		transcriptionStatus: "COMPLETED",
 		progress: 100,
 		transcript,
 		error: null,
@@ -45,6 +46,7 @@ async function runAudioTranscriptionPipeline(videoId, audioPath, duration, thumb
 
 	await store.patchVideo(videoId, {
 		status: "TRANSCRIBING",
+		transcriptionStatus: "PROCESSING",
 		progress: 20,
 		duration,
 		audioPath,
@@ -84,6 +86,7 @@ async function runAudioTranscriptionPipeline(videoId, audioPath, duration, thumb
 
 	await completeVideoTranscription(videoId, transcript, { thumbnailPath });
 
+	// Delete audio only after completeVideoTranscription succeeded
 	if (fs.existsSync(audioPath)) {
 		try {
 			fs.unlinkSync(audioPath);

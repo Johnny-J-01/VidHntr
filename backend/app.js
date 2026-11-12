@@ -7,6 +7,7 @@ import exportsRouter from "./routes/exports.js";
 import googleDriveRouter from "./routes/googleDrive.js";
 
 import { startCleanupScheduler } from "./services/storage/cleanupScheduler.js";
+import { recoverInterruptedJobs } from "./services/storage/recovery.js";
 
 const app = express();
 const PORT = process.env.PORT || 8787;
@@ -48,4 +49,5 @@ app.listen(PORT, "0.0.0.0", () => {
 		`VidHntr server listening on http://localhost:${PORT}`
 	);
 	startCleanupScheduler();
+	void recoverInterruptedJobs();
 });

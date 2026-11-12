@@ -49,7 +49,7 @@ const VideoPlayer = forwardRef(function VideoPlayer(
 				if (!cancelled) {
 					setSourceUrl(playbackUrl);
 				}
-			} catch (playbackError) {
+			} catch (_playbackError) {
 				// Fallback to blob if ticket fetch fails
 				try {
 					const file = await api.getVideoFile(videoId);

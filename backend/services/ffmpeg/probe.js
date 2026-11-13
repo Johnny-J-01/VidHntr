@@ -47,11 +47,9 @@ export function probeMetadata(filePath) {
 
 export function probeStreams(filePath, inputOptions = []) {
 	return new Promise((resolve, reject) => {
-		let cmd = ffmpeg(filePath);
-		if (Array.isArray(inputOptions) && inputOptions.length > 0) {
-			cmd = cmd.inputOptions(inputOptions);
-		}
-		cmd.ffprobe((error, data) => {
+		// fluent-ffmpeg's ffprobe does not inherit command inputOptions.
+		// Supply raw probe arguments explicitly, including authenticated headers.
+		ffmpeg(filePath).ffprobe(Array.isArray(inputOptions) ? inputOptions : [], (error, data) => {
 			if (error) {
 				return reject(error);
 			}
@@ -64,11 +62,23 @@ export function probeStreams(filePath, inputOptions = []) {
 				(stream) => stream.codec_type === "audio",
 			);
 
+			const video = videoStreams[0];
+			const [numerator, denominator] = String(video?.avg_frame_rate || "0/0")
+				.split("/").map(Number);
 			resolve({
 				hasVideo: videoStreams.length > 0,
 				hasAudio: audioStreams.length > 0,
 				videoStreams,
 				audioStreams,
+				metadata: {
+					duration: Number(data.format?.duration) || Number(video?.duration) || null,
+					width: Number(video?.width) || null,
+					height: Number(video?.height) || null,
+					frameRate: numerator > 0 && denominator > 0 ? numerator / denominator : null,
+					videoCodec: video?.codec_name || null,
+					audioCodec: audioStreams[0]?.codec_name || null,
+					startTime: Number(data.format?.start_time) || 0,
+				},
 			});
 		});
 	});

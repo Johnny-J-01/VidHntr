@@ -14,4 +14,5 @@ const FFPROBE_PATH = process.env.FFPROBE_PATH || (fs.existsSync(localFfprobe) ? 
 
 ffmpeg.setFfmpegPath(FFMPEG_PATH);
 ffmpeg.setFfprobePath(FFPROBE_PATH);
+export { FFMPEG_PATH, FFPROBE_PATH };
 export default ffmpeg;

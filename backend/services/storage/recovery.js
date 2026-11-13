@@ -8,7 +8,11 @@ import {
 	checkAndFinalizeVideo,
 	runProcessingPipeline,
 } from "../video/upload-processing.js";
-import { runExportJob } from "../export/export-job.js";
+import {
+	runExportJob,
+	uploadExportToDrive,
+} from "../export/export-job.js";
+import { exportExpiresAt } from "../video/limits.js";
 import { deleteExportWorkDir } from "../export/export-files.js";
 import { hasExpired } from "./retention.js";
 import { DIRS as VIDEO_DIRS } from "../video/paths.js";
@@ -95,41 +99,72 @@ export async function recoverInterruptedJobs() {
 		console.error("Error during video recovery:", videoRecoveryError);
 	}
 
-	// 2. Recover incomplete export jobs
+	// 2. Recover incomplete export jobs and unfinished Drive persistence.
 	try {
 		const { data: incompleteExports, error: exportError } = await supabase
 			.from("exports")
 			.select()
-			.in("status", ["QUEUED", "PROCESSING"]);
+			.in("status", ["QUEUED", "PROCESSING", "READY"]);
 
 		if (exportError) {
 			console.error("Failed to query incomplete exports during recovery:", exportError);
 		} else {
 			for (const row of incompleteExports || []) {
-				if (row.drive_file_id) {
+				const exp = await exportStore.getExport(row.id);
+				if (!exp) continue;
+				if (hasExpired(exp.expiresAt)) {
+					await exportStore.patchExport(row.id, { status: "EXPIRED" });
+					continue;
+				}
+
+				if (exp.driveFileId) {
+					const uploadedAt = exp.driveUploadedAt || Date.now();
 					await exportStore.patchExport(row.id, {
 						status: "READY",
 						progress: 100,
+						storageStatus: "STORED",
+						storageError: null,
+						driveUploadedAt: uploadedAt,
+						expiresAt: exp.expiresAt || exportExpiresAt(uploadedAt),
+						localReadyAt: exp.localReadyAt || (
+							exp.outputPath && fs.existsSync(exp.outputPath) ? Date.now() : null
+						),
 						error: null,
-					});
-				} else {
-					const parentVideo = await videoStore.getVideo(row.video_id);
-					if (
-						parentVideo &&
-						parentVideo.status === "READY" &&
-						!hasExpired(parentVideo.expiresAt)
-					) {
-						console.log(`Retrying interrupted export ${row.id}`);
-						void runExportJob(row.id);
-					} else {
-						await exportStore.patchExport(row.id, {
-							status: "ERROR",
-							error:
-								"Export was interrupted by server restart and parent video is not ready.",
-						});
-						deleteExportWorkDir(row.id);
-					}
+					}, { allowedStatuses: ["QUEUED", "PROCESSING", "READY"] });
+					continue;
 				}
+
+				const parentVideo = await videoStore.getVideo(row.video_id);
+				if (
+					!parentVideo ||
+					parentVideo.status !== "READY" ||
+					hasExpired(parentVideo.expiresAt)
+				) {
+					await exportStore.patchExport(row.id, {
+						status: "ERROR",
+						error:
+							"Export was interrupted by server restart and parent video is not ready.",
+					});
+					deleteExportWorkDir(row.id);
+					continue;
+				}
+
+				if (exp.status === "READY" && exp.outputPath && fs.existsSync(exp.outputPath)) {
+					console.log(`Resuming Drive upload for export ${row.id}`);
+					void uploadExportToDrive(row.id, parentVideo);
+					continue;
+				}
+
+				console.log(`Retrying interrupted export ${row.id}`);
+				await exportStore.patchExport(row.id, {
+					status: "QUEUED",
+					storageStatus: "PENDING",
+					storageError: null,
+					outputPath: null,
+					localReadyAt: null,
+					expiresAt: null,
+				});
+				void runExportJob(row.id);
 			}
 		}
 	} catch (exportRecoveryError) {

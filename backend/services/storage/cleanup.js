@@ -6,6 +6,8 @@ import {
 	clearRuntimeExport,
 	deleteExport,
 	listExportsByVideoId,
+	getExport,
+	patchExport,
 } from "../../db/exports.js";
 import {
 	clearRuntimeVideo,
@@ -17,8 +19,14 @@ import {
 	getApplicationRootFolder,
 	listFiles,
 } from "../google/drive.js";
-import { deleteTemporaryExportFiles } from "../export/processing.js";
-import { isFileLocked } from "../video/file-locks.js";
+import {
+	deleteTemporaryExportFiles,
+	deleteExportWorkDir,
+	getExportDeleteLockKey,
+	getExportProcessingLockKey,
+	hasActiveExportOperation,
+} from "../export/export-files.js";
+import { acquireFileLock, releaseFileLock, isFileLocked } from "../video/file-locks.js";
 import { DIRS as VIDEO_DIRS } from "../video/processing.js";
 import { VIDEO_EXPIRED_MESSAGE } from "./retention.js";
 
@@ -107,14 +115,33 @@ function cleanupStaleIncomingUploads() {
 }
 
 export async function deleteExportResources(exportJob) {
+	if (hasActiveExportOperation(exportJob.id)) return false;
+	if (!deleteExportWorkDir(exportJob.id)) return false;
 	deleteTemporaryExportFiles(exportJob.id);
 	await deleteDriveFile(exportJob.driveFileId ?? exportJob.drive_file_id);
+	return true;
 }
 
 export async function deleteExportCompletely(exportJob) {
-	await deleteExportResources(exportJob);
-	await deleteExport(exportJob.id);
-	clearRuntimeExport(exportJob.id);
+	const deletionLock = getExportDeleteLockKey(exportJob.id);
+	if (isFileLocked(deletionLock)) return false;
+	if (hasActiveExportOperation(exportJob.id)) {
+		await patchExport(exportJob.id, { status: "EXPIRED" });
+		return false;
+	}
+	acquireFileLock(deletionLock);
+	try {
+		// Refetch references after asynchronous upload completion before deleting.
+		const latest = await getExport(exportJob.id);
+		if (!latest) return true;
+		await patchExport(exportJob.id, { status: "EXPIRED" });
+		if (!(await deleteExportResources(latest))) return false;
+		await deleteExport(exportJob.id);
+		clearRuntimeExport(exportJob.id);
+		return true;
+	} finally {
+		releaseFileLock(deletionLock);
+	}
 }
 
 async function cleanupAbandonedUploadReservations() {
@@ -147,16 +174,14 @@ async function cleanupExpiredExports() {
 	const { data: exports, error } = await supabase
 		.from("exports")
 		.select("id, drive_file_id")
-		.not("expires_at", "is", null)
-		.lte("expires_at", new Date().toISOString());
+		.or(`expires_at.lte.${new Date().toISOString()},status.eq.EXPIRED`);
 
 	if (error) throw error;
 
 	let cleaned = 0;
 	for (const exportJob of exports || []) {
 		try {
-			await deleteExportCompletely(exportJob);
-			cleaned += 1;
+			if (await deleteExportCompletely(exportJob)) cleaned += 1;
 		} catch (error) {
 			console.error(`Failed to clean export ${exportJob.id}:`, error);
 		}
@@ -178,8 +203,7 @@ async function cleanupAbandonedExports() {
 	let cleaned = 0;
 	for (const exportJob of exports || []) {
 		try {
-			await deleteExportCompletely(exportJob);
-			cleaned += 1;
+			if (await deleteExportCompletely(exportJob)) cleaned += 1;
 		} catch (error) {
 			console.error(`Failed to clean abandoned export ${exportJob.id}:`, error);
 		}
@@ -189,14 +213,19 @@ async function cleanupAbandonedExports() {
 }
 
 export async function deleteVideoResources(video) {
+	const exports = await listExportsByVideoId(video.id);
+	if (exports.some((exp) => isFileLocked(getExportProcessingLockKey(exp.id)))) {
+		throw new Error("A source video is still being processed; deletion will be retried.");
+	}
 	await deleteDriveFile(video.driveFileId ?? video.drive_file_id);
 	await deleteDriveFile(video.metadataFileId ?? video.metadata_file_id);
 	await deleteDriveFile(video.transcriptFileId ?? video.transcript_file_id);
 	await deleteDriveFile(video.thumbnailFileId ?? video.thumbnail_file_id);
 
-	const exports = await listExportsByVideoId(video.id);
 	for (const exportJob of exports) {
-		await deleteExportCompletely(exportJob);
+		if (!(await deleteExportCompletely(exportJob))) {
+			throw new Error(`Export ${exportJob.id} is still downloading or uploading; deletion will be retried.`);
+		}
 	}
 
 	deleteLocalVideoFiles(video.id);

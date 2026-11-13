@@ -166,6 +166,10 @@ export default function ExportModal({
 									Fit frame (keep everything, blurred
 									background)
 								</option>
+
+								<option value="original">
+									Original (trim only, no resizing)
+								</option>
 							</select>
 						</div>
 
@@ -256,11 +260,17 @@ export default function ExportModal({
 					</div>
 
 					<p className="text-[11px] text-cf-muted">
-						File will save as{" "}
-						<span className="text-cf-text">
-							{name || "clip"}_{width}x{height}.mp4
-						</span>{" "}
-						in your downloads.
+						{cropMode === "original" ? (
+							"Original dimensions will be preserved. Keyframe-aligned compatible trims can avoid video re-encoding."
+						) : (
+							<>
+								File will save as{" "}
+								<span className="text-cf-text">
+									{name || "clip"}_{width}x{height}.mp4
+								</span>{" "}
+								in your downloads.
+							</>
+						)}
 					</p>
 
 					{exportState.error && (
@@ -287,9 +297,25 @@ export default function ExportModal({
 						</div>
 					)}
 
-					{done && exportState.expiresAt && (
+					{done && exportState.storageStatus !== "STORED" && (
 						<p className="text-[11px] text-cf-muted">
-							Available until {new Date(exportState.expiresAt).toLocaleTimeString()}.
+							{exportState.storageStatus === "FAILED"
+								? "Ready to download from this server. Storage upload failed; the three-minute retention period has not started."
+								: exportState.storageStatus === "FINALIZING"
+									? `Ready to download. Storage received the file; retrying confirmation. Available until ${new Date(exportState.expiresAt).toLocaleTimeString()}.`
+									: "Ready to download now. Saving a copy to storage…"}
+						</p>
+					)}
+
+					{done && exportState.storageError && (
+						<p className="text-[11px] text-red-400">
+							{exportState.storageError}
+						</p>
+					)}
+
+					{done && exportState.storageStatus === "STORED" && exportState.expiresAt && (
+						<p className="text-[11px] text-cf-muted">
+							Saved to storage. Available until {new Date(exportState.expiresAt).toLocaleTimeString()}.
 							Closing this window will not delete the export.
 						</p>
 					)}

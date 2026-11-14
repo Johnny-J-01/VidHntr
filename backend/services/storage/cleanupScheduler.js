@@ -1,4 +1,5 @@
 import { cleanupExpiredData } from "./cleanup.js";
+import { retryPendingDriveConfirmations } from "../export/export-job.js";
 
 const CLEANUP_INTERVAL_MS = 60 * 1000;
 let cleanupRunning = false;
@@ -8,6 +9,7 @@ async function runCleanup() {
 
 	cleanupRunning = true;
 	try {
+		await retryPendingDriveConfirmations();
 		await cleanupExpiredData();
 	} catch (error) {
 		console.error("Scheduled storage cleanup failed:", error);

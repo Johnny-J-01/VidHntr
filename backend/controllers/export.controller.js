@@ -1,3 +1,5 @@
+import fs from "fs";
+import { pipeline } from "stream/promises";
 import { v4 as uuid } from "uuid";
 
 import * as videos from "../db/videos.js";
@@ -6,6 +8,15 @@ import jobs, {
 	deleteTemporaryExportFiles,
 } from "../services/export/processing.js";
 import { getFileStream } from "../services/google/drive.js";
+import {
+	getExportDownloadLockKey,
+	getExportDeleteLockKey,
+} from "../services/export/export-files.js";
+import {
+	acquireFileLock,
+	releaseFileLock,
+	isFileLocked,
+} from "../services/video/file-locks.js";
 import { deleteExportCompletely } from "../services/storage/cleanup.js";
 import {
 	EXPORT_EXPIRED_MESSAGE,
@@ -17,7 +28,16 @@ import {
 } from "./video/video-helpers.js";
 
 const QUALITIES = new Set(["low", "medium", "high", "maximum"]);
-const CROP_MODES = new Set(["fill", "fit"]);
+const CROP_MODES = new Set(["fill", "fit", "original"]);
+const FORMAT_PRESETS = new Set([
+	"youtube-shorts",
+	"instagram-reels",
+	"tiktok",
+	"generic-vertical",
+	"square",
+	"landscape",
+	"custom",
+]);
 
 export async function requireExportAccess(request, response, exp) {
 	if (!exp) {
@@ -38,7 +58,8 @@ export async function requireExportAccess(request, response, exp) {
 
 	if (!(await requireVideoAccess(request, response, video))) return null;
 
-	if (hasExpired(exp.expiresAt) || exp.status === "EXPIRED") {
+	if (hasExpired(exp.expiresAt) || exp.status === "EXPIRED" ||
+		isFileLocked(getExportDeleteLockKey(exp.id))) {
 		try {
 			await deleteExportCompletely(exp);
 		} catch (error) {
@@ -66,6 +87,7 @@ export const createExport = async (request, response) => {
 		quality = "high",
 		captions = "off",
 		cropMode = "fill",
+		preset = "custom",
 	} = request.body || {};
 
 	const video = await videos.getVideo(videoId);
@@ -116,6 +138,12 @@ export const createExport = async (request, response) => {
 		});
 	}
 
+	if (!FORMAT_PRESETS.has(preset)) {
+		return response.status(400).json({
+			error: "Invalid platform preset.",
+		});
+	}
+
 	if (video.duration && clipEnd > Number(video.duration)) {
 		return response.status(400).json({
 			error: "Clip end exceeds video duration.",
@@ -143,11 +171,17 @@ export const createExport = async (request, response) => {
 		quality,
 		captions,
 		cropMode,
+		formatPreset: preset,
 		status: "QUEUED",
+		storageStatus: "PENDING",
 		progress: 0,
 		outputPath: null,
 		filename: null,
 		error: null,
+		storageError: null,
+		localReadyAt: null,
+		driveUploadedAt: null,
+		metrics: {},
 		createdAt: Date.now(),
 		expiresAt: null,
 	});
@@ -171,31 +205,55 @@ export const getExportStatus = async (request, response) => {
 		progress: exp.progress ?? 0,
 		filename: exp.filename || null,
 		expiresAt: exp.expiresAt || null,
+		storageStatus: exp.storageStatus || "PENDING",
+		storageError: exp.storageError || null,
+		localReadyAt: exp.localReadyAt || null,
+		driveUploadedAt: exp.driveUploadedAt || null,
 		error: exp.error || null,
 	});
 };
 
 export const downloadExport = async (request, response) => {
-	const exp = await store.getExport(request.params.id);
+	const downloadLockKey = getExportDownloadLockKey(request.params.id);
+	acquireFileLock(downloadLockKey);
+	let localPath = null;
 
-	if (!(await requireExportAccess(request, response, exp))) return;
+	try {
+		const exp = await store.getExport(request.params.id);
+		localPath = exp?.outputPath && fs.existsSync(exp.outputPath) ? exp.outputPath : null;
+		if (localPath) acquireFileLock(localPath);
+		if (!(await requireExportAccess(request, response, exp))) return;
 
-	if (exp.status !== "READY") {
-		return response.status(409).json({
-			error: "Export is not ready yet.",
-		});
+		if (exp.status !== "READY") {
+			return response.status(409).json({
+				error: "Export is not ready yet.",
+			});
+		}
+
+		if (!localPath && !exp.driveFileId) {
+			return response.status(404).json({
+				error: "Export file not found.",
+			});
+		}
+
+		response.attachment(exp.filename || "clip.mp4");
+		if (localPath) {
+			response.set("Content-Length", String(fs.statSync(localPath).size));
+		}
+
+		const stream = localPath
+			? fs.createReadStream(localPath)
+			: await getFileStream(exp.driveFileId);
+
+		try {
+			await pipeline(stream, response);
+		} catch (error) {
+			if (!response.destroyed) response.destroy(error);
+		}
+	} finally {
+		if (localPath) releaseFileLock(localPath);
+		releaseFileLock(downloadLockKey);
 	}
-
-	if (!exp.driveFileId) {
-		return response.status(404).json({
-			error: "Export file not found.",
-		});
-	}
-
-	response.attachment(exp.filename || "clip.mp4");
-	const stream = await getFileStream(exp.driveFileId);
-	stream.on("error", (error) => response.destroy(error));
-	return stream.pipe(response);
 };
 
 export const cleanupTemporaryExports = async (request, response) => {
@@ -209,7 +267,7 @@ export const cleanupTemporaryExports = async (request, response) => {
 
 		let cleaned = 0;
 		for (const exportJob of exports) {
-			if (exportJob.status !== "READY" && exportJob.status !== "FAILED") {
+			if (exportJob.status !== "ERROR" && exportJob.status !== "FAILED") {
 				continue;
 			}
 

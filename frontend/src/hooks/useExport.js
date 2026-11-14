@@ -4,7 +4,9 @@ import { api } from "../services/api.js";
 
 const TERMINAL = new Set(["READY", "ERROR", "FAILED", "CLOSED", "EXPIRED"]);
 const EXPORT_READY_MESSAGE =
-	"Your export is ready! It will be available for 3 minutes.";
+	"Your export is ready to download. Saving a copy to storage…";
+const EXPORT_STORED_MESSAGE =
+	"Your export was saved to storage. Its three-minute retention period has started.";
 const EXPORT_EXPIRED_MESSAGE =
 	"This export has expired. Please create it again.";
 
@@ -15,11 +17,14 @@ export function useExport() {
 	const [error, setError] = useState(null);
 	const [filename, setFilename] = useState(null);
 	const [expiresAt, setExpiresAt] = useState(null);
+	const [storageStatus, setStorageStatus] = useState("PENDING");
+	const [storageError, setStorageError] = useState(null);
 
 	const timer = useRef(null);
 	const expiryTimer = useRef(null);
 	const activeExportId = useRef(null);
 	const readyNotifiedFor = useRef(null);
+	const storedNotifiedFor = useRef(null);
 	const retryCount = useRef(0);
 
 	const markExpired = useCallback((id, message = EXPORT_EXPIRED_MESSAGE) => {
@@ -69,6 +74,8 @@ export function useExport() {
 					setError(data.error || null);
 					setFilename(data.filename || null);
 					setExpiresAt(data.expiresAt || null);
+					setStorageStatus(data.storageStatus || "PENDING");
+					setStorageError(data.storageError || null);
 
 					if (
 						data.status === "READY" &&
@@ -78,10 +85,27 @@ export function useExport() {
 						toast.success(EXPORT_READY_MESSAGE, {
 							id: `export-ready-${id}`,
 						});
+					}
+
+					if (
+						data.status === "READY" &&
+						data.storageStatus === "STORED"
+					) {
+						if (storedNotifiedFor.current !== id) {
+							storedNotifiedFor.current = id;
+							toast.success(EXPORT_STORED_MESSAGE, {
+								id: `export-stored-${id}`,
+							});
+						}
+					}
+					if (data.status === "READY" && data.expiresAt) {
 						scheduleExpiry(id, data.expiresAt);
 					}
 
-					if (!TERMINAL.has(data.status)) {
+					const storagePending =
+						data.status === "READY" &&
+						!["STORED", "FAILED"].includes(data.storageStatus);
+					if (!TERMINAL.has(data.status) || storagePending) {
 						timer.current = setTimeout(tick, 1500);
 					}
 				} catch (e) {
@@ -119,9 +143,12 @@ export function useExport() {
 			setProgress(0);
 			setFilename(null);
 			setExpiresAt(null);
+			setStorageStatus("PENDING");
+			setStorageError(null);
 			setExportId(null);
 			retryCount.current = 0;
 			readyNotifiedFor.current = null;
+			storedNotifiedFor.current = null;
 
 			if (timer.current) clearTimeout(timer.current);
 			if (expiryTimer.current) clearTimeout(expiryTimer.current);
@@ -151,6 +178,7 @@ export function useExport() {
 		expiryTimer.current = null;
 		activeExportId.current = null;
 		readyNotifiedFor.current = null;
+		storedNotifiedFor.current = null;
 		retryCount.current = 0;
 
 		setExportId(null);
@@ -159,6 +187,8 @@ export function useExport() {
 		setError(null);
 		setFilename(null);
 		setExpiresAt(null);
+		setStorageStatus("PENDING");
+		setStorageError(null);
 	}, []);
 
 	const downloadExport = useCallback(async () => {
@@ -203,5 +233,7 @@ export function useExport() {
 		error,
 		filename,
 		expiresAt,
+		storageStatus,
+		storageError,
 	};
 }

@@ -7,9 +7,17 @@ const RUNTIME_FIELDS = [
 	"quality",
 	"captions",
 	"cropMode",
+	"formatPreset",
 	"progress",
 	"outputPath",
 	"error",
+	"storageStatus",
+	"storageError",
+	"metrics",
+	"driveFileId",
+	"driveUploadedAt",
+	"expiresAt",
+	"localReadyAt",
 ];
 
 const runtimeExports = new Map();
@@ -27,6 +35,7 @@ function toTimestamp(value) {
 }
 
 function toIsoTimestamp(value) {
+	if (value === null || value === undefined) return null;
 	const timestamp = toTimestamp(value);
 
 	return timestamp === null ? null : new Date(timestamp).toISOString();
@@ -59,6 +68,21 @@ function toExportRecord(row) {
 		filename: row.filename,
 		createdAt: toTimestamp(row.created_at),
 		expiresAt: toTimestamp(row.expires_at),
+		storageStatus: row.storage_status || "PENDING",
+		outputPath: row.output_path || null,
+		localReadyAt: toTimestamp(row.local_ready_at),
+		driveUploadedAt: toTimestamp(row.drive_uploaded_at),
+		storageError: row.storage_error || null,
+		filenameBase: row.filename_base || null,
+		width: row.width === null || row.width === undefined ? null : Number(row.width),
+		height: row.height === null || row.height === undefined ? null : Number(row.height),
+		quality: row.quality || "high",
+		captions: row.captions || "off",
+		cropMode: row.crop_mode || "fill",
+		formatPreset: row.format_preset || null,
+		progress: row.progress ?? 0,
+		error: row.error || null,
+		metrics: row.metrics || {},
 		...runtimeExports.get(row.id),
 	};
 }
@@ -77,7 +101,22 @@ function toSupabaseExport(exportJob) {
 		drive_file_id: exportJob.driveFileId ?? null,
 		filename: exportJob.filename ?? null,
 		created_at: toIsoTimestamp(createdAt),
-		expires_at: toIsoTimestamp(exportJob.expiresAt ?? null),
+		expires_at: toIsoTimestamp(exportJob.expiresAt),
+		storage_status: exportJob.storageStatus || "PENDING",
+		output_path: exportJob.outputPath ?? null,
+		local_ready_at: toIsoTimestamp(exportJob.localReadyAt),
+		drive_uploaded_at: toIsoTimestamp(exportJob.driveUploadedAt),
+		storage_error: exportJob.storageError ?? null,
+		filename_base: exportJob.filenameBase ?? null,
+		width: exportJob.width ?? null,
+		height: exportJob.height ?? null,
+		quality: exportJob.quality ?? "high",
+		captions: exportJob.captions ?? "off",
+		crop_mode: exportJob.cropMode ?? "fill",
+		format_preset: exportJob.formatPreset ?? null,
+		progress: exportJob.progress ?? 0,
+		error: exportJob.error ?? null,
+		metrics: exportJob.metrics || {},
 	};
 }
 
@@ -91,6 +130,19 @@ function toSupabasePatch(patch) {
 		status: "status",
 		driveFileId: "drive_file_id",
 		filename: "filename",
+		storageStatus: "storage_status",
+		outputPath: "output_path",
+		storageError: "storage_error",
+		filenameBase: "filename_base",
+		width: "width",
+		height: "height",
+		quality: "quality",
+		captions: "captions",
+		cropMode: "crop_mode",
+		formatPreset: "format_preset",
+		progress: "progress",
+		error: "error",
+		metrics: "metrics",
 	};
 
 	const update = {};
@@ -101,38 +153,30 @@ function toSupabasePatch(patch) {
 		}
 	}
 
-	if (hasOwn(patch, "createdAt")) {
-		update.created_at = toIsoTimestamp(patch.createdAt);
-	}
-
-	if (hasOwn(patch, "expiresAt")) {
-		update.expires_at = toIsoTimestamp(patch.expiresAt);
+	for (const [field, column] of Object.entries({
+		createdAt: "created_at",
+		expiresAt: "expires_at",
+		localReadyAt: "local_ready_at",
+		driveUploadedAt: "drive_uploaded_at",
+	})) {
+		if (hasOwn(patch, field)) {
+			update[column] = toIsoTimestamp(patch[field]);
+		}
 	}
 
 	return update;
 }
 
 async function upsertExport(exportJob) {
-	rememberRuntimeFields(exportJob.id, exportJob);
-
 	const payload = toSupabaseExport(exportJob);
-	let { data, error } = await supabase
+	const { data, error } = await supabase
 		.from("exports")
 		.upsert(payload)
 		.select()
 		.single();
 
-	if (error && (error.code === "23502" || String(error.message).includes("not-null") || String(error.message).includes("null value in column \"expires_at\""))) {
-		payload.expires_at = toIsoTimestamp(Date.now() + 30 * 60 * 1000);
-		({ data, error } = await supabase
-			.from("exports")
-			.upsert(payload)
-			.select()
-			.single());
-	}
-
 	if (error) throw error;
-
+	rememberRuntimeFields(exportJob.id, exportJob);
 	return toExportRecord(data);
 }
 
@@ -165,25 +209,23 @@ async function deleteExport(id) {
 	if (error) throw error;
 }
 
-async function patchExport(id, patch) {
-	rememberRuntimeFields(id, patch);
-
+async function patchExport(id, patch, { allowedStatuses } = {}) {
 	const update = toSupabasePatch(patch);
 
-	if (Object.keys(update).length === 0) {
-		return getExport(id);
-	}
+	if (Object.keys(update).length === 0) return getExport(id);
 
-	const { data, error } = await supabase
-		.from("exports")
-		.update(update)
-		.eq("id", id)
-		.select()
-		.maybeSingle();
-
+	let query = supabase.from("exports").update(update).eq("id", id);
+	if (allowedStatuses) query = query.in("status", allowedStatuses);
+	const { data, error } = await query.select().maybeSingle();
 	if (error) throw error;
-
+	if (data) rememberRuntimeFields(id, patch);
 	return toExportRecord(data);
+}
+
+// Call only after Drive returns a file ID. Keep its confirmation while a
+// database finalization is retried, without presenting failed writes as stored.
+function rememberExportDriveConfirmation(id, confirmation) {
+	rememberRuntimeFields(id, { ...confirmation, storageStatus: "FINALIZING" });
 }
 
 function clearRuntimeExport(id) {
@@ -196,5 +238,6 @@ export {
 	listExportsByVideoId,
 	deleteExport,
 	patchExport,
+	rememberExportDriveConfirmation,
 	clearRuntimeExport,
 };

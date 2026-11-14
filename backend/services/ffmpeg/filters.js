@@ -1,11 +1,11 @@
 import fs from "fs";
 
-export function buildFillFilter(width, height) {
+export function buildFillFilter(width, height, verticalPosition = 0.42) {
 	const targetAspect = width / height;
 	const cropWidth = `if(gt(iw/ih\\,${targetAspect})\\,ih*${targetAspect}\\,iw)`;
 	const cropHeight = `if(gt(iw/ih\\,${targetAspect})\\,ih\\,iw/${targetAspect})`;
 	const cropX = `(iw-${cropWidth})/2`;
-	const cropY = `(ih-${cropHeight})*0.42`;
+	const cropY = `(ih-${cropHeight})*${verticalPosition}`;
 
 	return [
 		`crop=w=${cropWidth}:h=${cropHeight}:x=${cropX}:y=${cropY}`,

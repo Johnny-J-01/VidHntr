@@ -1,7 +1,5 @@
 import { supabase } from "./client.js";
 
-const GUEST_DATA_LIFETIME_MS = 24 * 60 * 60 * 1000;
-
 const RUNTIME_FIELDS = [
 	"filenameBase",
 	"width",
@@ -79,9 +77,7 @@ function toSupabaseExport(exportJob) {
 		drive_file_id: exportJob.driveFileId ?? null,
 		filename: exportJob.filename ?? null,
 		created_at: toIsoTimestamp(createdAt),
-		expires_at: toIsoTimestamp(
-			exportJob.expiresAt ?? createdAt + GUEST_DATA_LIFETIME_MS,
-		),
+		expires_at: toIsoTimestamp(exportJob.expiresAt ?? null),
 	};
 }
 

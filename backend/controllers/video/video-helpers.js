@@ -1,3 +1,9 @@
+import { loadVideoTranscript } from "../../services/storage/video-files.js";
+import {
+	hasExpired,
+	VIDEO_EXPIRED_MESSAGE,
+} from "../../services/storage/retention.js";
+
 export function canAccessVideo(request, video) {
 	if (!video) return false;
 
@@ -54,7 +60,7 @@ export function publicVideo(video) {
 	};
 }
 
-export function requireVideoAccess(request, response, video) {
+export async function requireVideoAccess(request, response, video) {
 	if (!video) {
 		response.status(404).json({ error: "Video not found." });
 		return false;
@@ -63,6 +69,28 @@ export function requireVideoAccess(request, response, video) {
 		response.status(403).json({ error: "You cannot access this video." });
 		return false;
 	}
+
+	if (
+		hasExpired(video.expiresAt) ||
+		video.status === "EXPIRED" ||
+		video.status === "DELETING"
+	) {
+		try {
+			const { deleteVideoCompletely } = await import(
+				"../../services/storage/cleanup.js"
+			);
+			await deleteVideoCompletely(video);
+		} catch (error) {
+			console.error(`Failed to clean expired video ${video.id}:`, error);
+		}
+
+		response.status(410).json({
+			error: VIDEO_EXPIRED_MESSAGE,
+			code: "VIDEO_EXPIRED",
+		});
+		return false;
+	}
+
 	return true;
 }
 
@@ -114,8 +142,10 @@ export function getYouTubeVideoId(url) {
 	}
 }
 
-export function getTranscriptOrThrow(video) {
-	if (!Array.isArray(video.transcript)) {
+export async function getTranscriptOrThrow(video) {
+	const transcript = await loadVideoTranscript(video);
+
+	if (!Array.isArray(transcript)) {
 		const error = new Error(
 			"This video is still processing. Try again once it is ready.",
 		);
@@ -125,5 +155,5 @@ export function getTranscriptOrThrow(video) {
 		throw error;
 	}
 
-	return video.transcript;
+	return transcript;
 }

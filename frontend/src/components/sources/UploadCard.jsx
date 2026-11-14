@@ -1,7 +1,9 @@
 import { useRef, useState } from "react";
 import { toast } from "react-hot-toast";
+import { useAuth } from "../../auth/AuthContext.jsx";
 
-const MAX_UPLOAD_SIZE_BYTES = 2 * 1024 * 1024 * 1024;
+const GUEST_MAX_UPLOAD_SIZE_BYTES = 300 * 1024 * 1024;
+const AUTH_MAX_UPLOAD_SIZE_BYTES = 500 * 1024 * 1024;
 const ACCEPTED_TYPES = new Set([
 	"video/mp4",
 	"video/quicktime",
@@ -17,6 +19,12 @@ function isSupportedFile(file) {
 }
 
 export default function UploadCard({ onUpload }) {
+	const { user } = useAuth();
+	const maximumSizeBytes = user
+		? AUTH_MAX_UPLOAD_SIZE_BYTES
+		: GUEST_MAX_UPLOAD_SIZE_BYTES;
+	const maximumSizeLabel = user ? "500 MB" : "300 MB";
+	const retentionLabel = user ? "1 day" : "1 hour";
 	const inputRef = useRef(null);
 	const [dragOver, setDragOver] = useState(false);
 	const [uploading, setUploading] = useState(false);
@@ -34,8 +42,8 @@ export default function UploadCard({ onUpload }) {
 			toast.error("The selected video is empty.");
 			return;
 		}
-		if (file.size > MAX_UPLOAD_SIZE_BYTES) {
-			toast.error("The selected video exceeds the 2 GB limit.");
+		if (file.size > maximumSizeBytes) {
+			toast.error(`The selected video exceeds the ${maximumSizeLabel} limit.`);
 			return;
 		}
 
@@ -79,7 +87,9 @@ export default function UploadCard({ onUpload }) {
 			<p className="text-sm font-medium">
 				{uploading ? `Uploading Video ${uploadProgress}%` : "Upload Video"}
 			</p>
-			<p className="text-xs text-cf-muted">MP4, MOV, WebM, MKV up to 2 GB</p>
+			<p className="text-xs text-cf-muted">
+				MP4, MOV, WebM, MKV up to {maximumSizeLabel} · {retentionLabel} retention
+			</p>
 			<input
 				ref={inputRef}
 				type="file"

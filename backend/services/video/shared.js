@@ -1,6 +1,7 @@
 import fs from "fs";
 
 import * as store from "../../db/videos.js";
+import { storeVideoJsonFiles } from "../storage/video-files.js";
 import transcription from "../transcription/deepgram.js";
 
 async function markError(videoId, message) {
@@ -8,6 +9,34 @@ async function markError(videoId, message) {
 		status: "ERROR",
 		progress: 0,
 		error: message,
+	});
+}
+
+export async function completeVideoTranscription(
+	videoId,
+	transcript,
+	runtimePatch = {},
+) {
+	const video = await store.getVideo(videoId);
+	if (!video) throw new Error("Video was not found while saving its transcript.");
+
+	const fileIds = await storeVideoJsonFiles(
+		{
+			...video,
+			status: "READY",
+			progress: 100,
+			error: null,
+		},
+		transcript,
+	);
+
+	return store.patchVideo(videoId, {
+		...runtimePatch,
+		...fileIds,
+		status: "READY",
+		progress: 100,
+		transcript,
+		error: null,
 	});
 }
 
@@ -53,14 +82,7 @@ async function runAudioTranscriptionPipeline(videoId, audioPath, duration, thumb
 		transcriptPath: null,
 	});
 
-	await store.patchVideo(videoId, {
-		status: "READY",
-		progress: 100,
-		transcript,
-		transcriptPath: null,
-		thumbnailPath,
-		error: null,
-	});
+	await completeVideoTranscription(videoId, transcript, { thumbnailPath });
 
 	if (fs.existsSync(audioPath)) {
 		try {
@@ -70,4 +92,3 @@ async function runAudioTranscriptionPipeline(videoId, audioPath, duration, thumb
 }
 
 export { markError, runAudioTranscriptionPipeline };
-

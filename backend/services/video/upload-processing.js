@@ -3,19 +3,24 @@ import path from "path";
 
 import * as store from "../../db/videos.js";
 import ffmpegSvc from "../ffmpeg/config.js";
-import { getGuestVideoFolder, uploadFile } from "../google/drive.js";
+import {
+	storeSourceVideo,
+	storeVideoJsonFiles,
+	storeVideoThumbnail,
+} from "../storage/video-files.js";
+import { videoExpiresAtForOwner } from "./limits.js";
 import { DIRS } from "./paths.js";
 import { markError, runAudioTranscriptionPipeline } from "./shared.js";
 
 async function runProcessingPipeline(videoId) {
 	let audioPath = null;
 	let thumbnailPath = null;
+	let retentionStarted = false;
 
 	try {
 		console.log(`Starting upload processing pipeline for video: ${videoId}`);
 
-		const video = await store.getVideo(videoId);
-
+		let video = await store.getVideo(videoId);
 		if (!video) {
 			console.error(`Video ${videoId} was not found.`);
 			return;
@@ -32,34 +37,21 @@ async function runProcessingPipeline(videoId) {
 		});
 
 		const duration = await ffmpegSvc.probeDuration(video.filePath);
+		const { file: sourceDriveFile, folders } = await storeSourceVideo(video);
+		const expiresAt = videoExpiresAtForOwner(video.userId, Date.now());
 
-		console.log(`Preparing Google Drive storage for video: ${videoId}`);
-
-		const guestVideoFolder = await getGuestVideoFolder(videoId);
-
-		console.log(`Uploading source video to Google Drive: ${video.filePath}`);
-
-		const sourceDriveFile = await uploadFile({
-			filePath: video.filePath,
-			fileName: video.filename || path.basename(video.filePath),
-			mimeType: "video/mp4",
-			folderId: guestVideoFolder.id,
-		});
-
-		if (!sourceDriveFile?.id) {
-			throw new Error("Source video could not be stored in Google Drive.");
-		}
-
-		console.log(`Source video stored in Google Drive: ${sourceDriveFile.id}`);
-
-		await store.patchVideo(videoId, {
-			driveFolderId: guestVideoFolder.id,
+		video = await store.patchVideo(videoId, {
+			driveFolderId: folders.owner.id,
 			driveFileId: sourceDriveFile.id,
 			duration,
+			expiresAt,
 		});
+		retentionStarted = true;
+
+		const jsonFileIds = await storeVideoJsonFiles(video);
+		video = await store.patchVideo(videoId, jsonFileIds);
 
 		audioPath = path.join(DIRS.audio, `${videoId}.mp3`);
-
 		await ffmpegSvc.extractAudio(video.filePath, audioPath);
 
 		try {
@@ -73,20 +65,31 @@ async function runProcessingPipeline(videoId) {
 			thumbnailPath = null;
 		}
 
+		if (thumbnailPath) {
+			const thumbnailFile = await storeVideoThumbnail(video, thumbnailPath);
+			await store.patchVideo(videoId, {
+				thumbnailFileId: thumbnailFile.id,
+			});
+		}
+
 		await runAudioTranscriptionPipeline(videoId, audioPath, duration, thumbnailPath);
 	} catch (error) {
 		console.error(`Video ${videoId} processing failed:`, error);
 
-		if (audioPath && fs.existsSync(audioPath)) {
-			try {
-				fs.unlinkSync(audioPath);
-			} catch {}
+		for (const temporaryPath of [audioPath, thumbnailPath]) {
+			if (temporaryPath && fs.existsSync(temporaryPath)) {
+				try {
+					fs.unlinkSync(temporaryPath);
+				} catch {}
+			}
 		}
 
-		if (thumbnailPath && fs.existsSync(thumbnailPath)) {
+		if (!retentionStarted) {
 			try {
-				fs.unlinkSync(thumbnailPath);
-			} catch {}
+				await store.patchVideo(videoId, { expiresAt: Date.now() });
+			} catch (expiryError) {
+				console.error(`Failed to release upload slot for ${videoId}:`, expiryError);
+			}
 		}
 
 		await markError(videoId, error.message || "Processing failed.");
@@ -94,4 +97,3 @@ async function runProcessingPipeline(videoId) {
 }
 
 export { runProcessingPipeline };
-

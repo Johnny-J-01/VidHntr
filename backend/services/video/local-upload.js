@@ -1,7 +1,11 @@
 import fs from "fs/promises";
 import path from "path";
+import {
+	AUTH_MAX_UPLOAD_SIZE_BYTES,
+	uploadSizeLimitLabel,
+} from "./limits.js";
 
-export const MAX_UPLOAD_SIZE_BYTES = 2 * 1024 * 1024 * 1024;
+export const MAX_UPLOAD_SIZE_BYTES = AUTH_MAX_UPLOAD_SIZE_BYTES;
 
 export const UPLOAD_FORMATS = new Map([
 	["video/mp4", { extension: ".mp4", container: "iso-bmff" }],
@@ -79,7 +83,9 @@ export async function finalizeLocalUpload({
 	const stats = await fs.stat(temporaryPath);
 	if (stats.size <= 0) throw uploadValidationError("The uploaded video is empty.");
 	if (stats.size > maximumSizeBytes) {
-		throw uploadValidationError("The uploaded video exceeds the 2 GB limit.");
+		throw uploadValidationError(
+			`The uploaded video exceeds the ${uploadSizeLimitLabel(maximumSizeBytes)} limit.`,
+		);
 	}
 
 	const handle = await fs.open(temporaryPath, "r");

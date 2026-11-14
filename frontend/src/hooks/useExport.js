@@ -1,7 +1,12 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "react-hot-toast";
 import { api } from "../services/api.js";
 
-const TERMINAL = new Set(["READY", "ERROR", "FAILED", "CLOSED"]);
+const TERMINAL = new Set(["READY", "ERROR", "FAILED", "CLOSED", "EXPIRED"]);
+const EXPORT_READY_MESSAGE =
+	"Your export is ready! It will be available for 3 minutes.";
+const EXPORT_EXPIRED_MESSAGE =
+	"This export has expired. Please create it again.";
 
 export function useExport() {
 	const [exportId, setExportId] = useState(null);
@@ -9,48 +14,103 @@ export function useExport() {
 	const [progress, setProgress] = useState(0);
 	const [error, setError] = useState(null);
 	const [filename, setFilename] = useState(null);
+	const [expiresAt, setExpiresAt] = useState(null);
 
 	const timer = useRef(null);
+	const expiryTimer = useRef(null);
 	const activeExportId = useRef(null);
-	const videoId = useRef(null);
+	const readyNotifiedFor = useRef(null);
 	const retryCount = useRef(0);
 
-	const poll = useCallback((id) => {
-		async function tick() {
-			try {
-				const data = await api.getExportStatus(id);
+	const markExpired = useCallback((id, message = EXPORT_EXPIRED_MESSAGE) => {
+		if (activeExportId.current !== id) return;
 
-				if (activeExportId.current !== id) {
-					return;
-				}
-
-				retryCount.current = 0; // Reset consecutive error count on successful status check
-				setStatus(data.status);
-				setProgress(data.progress ?? 0);
-				setError(data.error || null);
-				setFilename(data.filename || null);
-
-				if (!TERMINAL.has(data.status)) {
-					timer.current = setTimeout(tick, 1500);
-				}
-			} catch (e) {
-				if (activeExportId.current !== id) {
-					return;
-				}
-
-				retryCount.current += 1;
-
-				// Allow up to 3 consecutive transient network drops before displaying UI error
-				if (retryCount.current > 3) {
-					setError(e.message || "Network error while checking export status.");
-				}
-
-				timer.current = setTimeout(tick, 2500);
-			}
+		if (expiryTimer.current) {
+			clearTimeout(expiryTimer.current);
+			expiryTimer.current = null;
 		}
 
-		tick();
+		setStatus("EXPIRED");
+		setError(message || EXPORT_EXPIRED_MESSAGE);
+		toast.error(message || EXPORT_EXPIRED_MESSAGE, {
+			id: `export-expired-${id}`,
+		});
 	}, []);
+
+	const scheduleExpiry = useCallback(
+		(id, expiry) => {
+			if (expiryTimer.current) {
+				clearTimeout(expiryTimer.current);
+				expiryTimer.current = null;
+			}
+
+			const expiryMs = expiry ? new Date(expiry).getTime() : NaN;
+			if (!Number.isFinite(expiryMs)) return;
+
+			expiryTimer.current = setTimeout(
+				() => markExpired(id),
+				Math.max(0, expiryMs - Date.now()),
+			);
+		},
+		[markExpired],
+	);
+
+	const poll = useCallback(
+		(id) => {
+			async function tick() {
+				try {
+					const data = await api.getExportStatus(id);
+
+					if (activeExportId.current !== id) return;
+
+					retryCount.current = 0;
+					setStatus(data.status);
+					setProgress(data.progress ?? 0);
+					setError(data.error || null);
+					setFilename(data.filename || null);
+					setExpiresAt(data.expiresAt || null);
+
+					if (
+						data.status === "READY" &&
+						readyNotifiedFor.current !== id
+					) {
+						readyNotifiedFor.current = id;
+						toast.success(EXPORT_READY_MESSAGE, {
+							id: `export-ready-${id}`,
+						});
+						scheduleExpiry(id, data.expiresAt);
+					}
+
+					if (!TERMINAL.has(data.status)) {
+						timer.current = setTimeout(tick, 1500);
+					}
+				} catch (e) {
+					if (activeExportId.current !== id) return;
+
+					if (e.code === "EXPORT_EXPIRED") {
+						markExpired(id, e.message);
+						return;
+					}
+
+					if (e.code === "VIDEO_EXPIRED") {
+						setStatus("ERROR");
+						setError(e.message);
+						return;
+					}
+
+					retryCount.current += 1;
+					if (retryCount.current > 3) {
+						setError(e.message || "Network error while checking export status.");
+					}
+
+					timer.current = setTimeout(tick, 2500);
+				}
+			}
+
+			tick();
+		},
+		[markExpired, scheduleExpiry],
+	);
 
 	const startExport = useCallback(
 		async (payload) => {
@@ -58,23 +118,22 @@ export function useExport() {
 			setStatus("QUEUED");
 			setProgress(0);
 			setFilename(null);
+			setExpiresAt(null);
 			setExportId(null);
 			retryCount.current = 0;
+			readyNotifiedFor.current = null;
 
-			if (timer.current) {
-				clearTimeout(timer.current);
-				timer.current = null;
-			}
-
+			if (timer.current) clearTimeout(timer.current);
+			if (expiryTimer.current) clearTimeout(expiryTimer.current);
+			timer.current = null;
+			expiryTimer.current = null;
 			activeExportId.current = null;
-			videoId.current = payload.videoId;
 
 			try {
 				const data = await api.createExport(payload);
 
 				activeExportId.current = data.exportId;
 				setExportId(data.exportId);
-
 				poll(data.exportId);
 			} catch (e) {
 				activeExportId.current = null;
@@ -86,15 +145,12 @@ export function useExport() {
 	);
 
 	const resetExport = useCallback(() => {
-		const currentVideoId = videoId.current;
-
-		if (timer.current) {
-			clearTimeout(timer.current);
-			timer.current = null;
-		}
-
+		if (timer.current) clearTimeout(timer.current);
+		if (expiryTimer.current) clearTimeout(expiryTimer.current);
+		timer.current = null;
+		expiryTimer.current = null;
 		activeExportId.current = null;
-		videoId.current = null;
+		readyNotifiedFor.current = null;
 		retryCount.current = 0;
 
 		setExportId(null);
@@ -102,22 +158,13 @@ export function useExport() {
 		setProgress(0);
 		setError(null);
 		setFilename(null);
-
-		if (currentVideoId) {
-			api.cleanupTemporaryExports(currentVideoId).catch((error) => {
-				console.error(
-					"Failed to clean temporary exports:",
-					error,
-				);
-			});
-		}
+		setExpiresAt(null);
 	}, []);
 
 	const downloadExport = useCallback(async () => {
 		if (!exportId) return;
 
 		setError(null);
-
 		try {
 			const file = await api.downloadExport(exportId);
 			const url = URL.createObjectURL(file);
@@ -129,9 +176,22 @@ export function useExport() {
 			link.remove();
 			URL.revokeObjectURL(url);
 		} catch (e) {
+			if (e.code === "EXPORT_EXPIRED") {
+				markExpired(exportId, e.message);
+				return;
+			}
+
 			setError(e.message || "Failed to download export.");
 		}
-	}, [exportId, filename]);
+	}, [exportId, filename, markExpired]);
+
+	useEffect(() => {
+		return () => {
+			if (timer.current) clearTimeout(timer.current);
+			if (expiryTimer.current) clearTimeout(expiryTimer.current);
+			activeExportId.current = null;
+		};
+	}, []);
 
 	return {
 		startExport,
@@ -142,5 +202,6 @@ export function useExport() {
 		progress,
 		error,
 		filename,
+		expiresAt,
 	};
 }

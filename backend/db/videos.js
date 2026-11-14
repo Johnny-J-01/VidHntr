@@ -25,6 +25,7 @@ const LOCAL_RUNTIME_FIELDS = [
 ];
 
 const runtimePaths = new Map();
+const runtimeTranscripts = new Map();
 
 function hasOwn(object, property) {
 	return Object.prototype.hasOwnProperty.call(object, property);
@@ -102,6 +103,10 @@ function recoverRuntimePaths(id, sourceType) {
 }
 
 function rememberRuntimePaths(id, video) {
+	if (hasOwn(video, "transcript")) {
+		runtimeTranscripts.set(id, video.transcript);
+	}
+
 	const current = runtimePaths.get(id) || {};
 	const recovered = recoverRuntimePaths(id, video.sourceType);
 
@@ -171,13 +176,16 @@ function toVideoRecord(row) {
 		duration: row.duration === null ? null : Number(row.duration),
 		status: row.status,
 		progress: row.progress,
-		transcript: row.transcript,
+		transcript: runtimeTranscripts.has(row.id)
+			? runtimeTranscripts.get(row.id)
+			: row.transcript,
 		error: row.error,
 		createdAt: toTimestamp(row.created_at),
 		expiresAt: toTimestamp(row.expires_at),
 		driveFileId: row.drive_file_id,
 		driveFolderId: row.drive_folder_id,
 		thumbnailFileId: row.thumbnail_file_id,
+		metadataFileId: row.metadata_file_id,
 		transcriptFileId: row.transcript_file_id,
 		...runtime,
 	};
@@ -200,9 +208,9 @@ function toSupabaseVideo(video) {
 		drive_file_id: video.driveFileId ?? null,
 		drive_folder_id: video.driveFolderId ?? null,
 		thumbnail_file_id: video.thumbnailFileId ?? null,
+		metadata_file_id: video.metadataFileId ?? null,
 		transcript_file_id: video.transcriptFileId ?? null,
 		youtube_id: video.youtubeId ?? null,
-		transcript: video.transcript ?? null,
 		error: video.error ?? null,
 		created_at: toIsoTimestamp(createdAt),
 		expires_at: toIsoTimestamp(video.expiresAt ?? null),
@@ -223,9 +231,9 @@ function toSupabasePatch(patch) {
 		driveFileId: "drive_file_id",
 		driveFolderId: "drive_folder_id",
 		thumbnailFileId: "thumbnail_file_id",
+		metadataFileId: "metadata_file_id",
 		transcriptFileId: "transcript_file_id",
 		youtubeId: "youtube_id",
-		transcript: "transcript",
 		error: "error",
 	};
 
@@ -316,6 +324,10 @@ async function listVideos({ userId = null, guestId = null } = {}) {
 }
 
 async function patchVideo(id, patch) {
+	if (hasOwn(patch, "transcript")) {
+		runtimeTranscripts.set(id, patch.transcript);
+	}
+
 	const current = runtimePaths.get(id) || {};
 	const next = {
 		...current,
@@ -364,6 +376,7 @@ async function patchVideo(id, patch) {
 
 function clearRuntimeVideo(id) {
 	runtimePaths.delete(id);
+	runtimeTranscripts.delete(id);
 }
 
 export {

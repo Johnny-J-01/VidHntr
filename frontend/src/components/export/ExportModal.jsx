@@ -80,7 +80,10 @@ export default function ExportModal({
 	}
 
 	const busy =
-		exportState.status && !["READY", "ERROR"].includes(exportState.status);
+		exportState.status &&
+		!["READY", "ERROR", "FAILED", "CLOSED", "EXPIRED"].includes(
+			exportState.status,
+		);
 
 	const done = exportState.status === "READY";
 
@@ -282,6 +285,13 @@ export default function ExportModal({
 								{exportState.progress}%
 							</p>
 						</div>
+					)}
+
+					{done && exportState.expiresAt && (
+						<p className="text-[11px] text-cf-muted">
+							Available until {new Date(exportState.expiresAt).toLocaleTimeString()}.
+							Closing this window will not delete the export.
+						</p>
 					)}
 
 					{done ? (

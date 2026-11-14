@@ -17,10 +17,6 @@ function getExpirationMs(video) {
 		const ms = new Date(video.expiresAt).getTime();
 		if (!isNaN(ms)) return ms;
 	}
-	if (video.createdAt) {
-		const ms = new Date(video.createdAt).getTime();
-		if (!isNaN(ms)) return ms + 15 * 60 * 1000;
-	}
 	return null;
 }
 

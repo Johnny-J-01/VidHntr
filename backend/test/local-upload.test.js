@@ -80,16 +80,19 @@ test("finalizeLocalUpload rejects an oversized file without promoting it", async
 	const temporaryPath = getTemporaryUploadPath(incoming, videoId);
 
 	try {
-		await fs.writeFile(temporaryPath, Buffer.concat([mp4Header(), Buffer.alloc(1)]));
+		await fs.writeFile(
+			temporaryPath,
+			Buffer.concat([mp4Header(), Buffer.alloc(1024 * 1024)]),
+		);
 		await assert.rejects(
 			finalizeLocalUpload({
 				temporaryPath,
 				uploadDirectory: uploads,
 				videoId,
 				mimeType: "video/mp4",
-				maximumSizeBytes: 16,
+				maximumSizeBytes: 1024 * 1024,
 			}),
-			/exceeds the 2 GB limit/,
+			/exceeds the 1 MB limit/,
 		);
 		await assert.rejects(fs.stat(path.join(uploads, `${videoId}.mp4`)), { code: "ENOENT" });
 	} finally {

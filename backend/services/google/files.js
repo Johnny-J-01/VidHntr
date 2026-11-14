@@ -1,168 +1,150 @@
 import fs from "fs";
+import fsPromises from "fs/promises";
+import path from "path";
+import { Readable } from "stream";
+import { pipeline } from "stream/promises";
 import { DRIVE_FOLDER_ID, getDrive } from "./client.js";
 
-export const uploadFile = async ({
+const FILE_FIELDS =
+	"id,name,mimeType,size,createdTime,modifiedTime,webViewLink,parents,trashed";
+
+async function sendContent({ fileId, folderId, fileName, mimeType, body }) {
+	if (!fileName) throw new Error("Drive upload requires a file name.");
+	if (!fileId && !folderId) {
+		throw new Error("Drive upload requires a destination folder ID.");
+	}
+
+	const drive = getDrive();
+	const request = {
+		media: { mimeType, body },
+		fields: FILE_FIELDS,
+	};
+	let response;
+
+	if (fileId) {
+		response = await drive.files.update({ ...request, fileId });
+	} else {
+		response = await drive.files.create({
+			...request,
+			requestBody: { name: fileName, parents: [folderId] },
+		});
+	}
+
+	if (!response.data?.id) {
+		throw new Error("Google Drive returned no file ID after upload.");
+	}
+
+	return response.data;
+}
+
+export async function uploadFile({
 	filePath,
 	fileName,
 	mimeType,
 	folderId = DRIVE_FOLDER_ID,
-}) => {
-	if (!filePath) {
-		throw new Error(
-			"Drive upload requires a file path.",
-		);
-	}
+	fileId = null,
+}) {
+	if (!filePath) throw new Error("Drive upload requires a file path.");
 
-	if (!fs.existsSync(filePath)) {
-		throw new Error(
-			`Drive upload source file does not exist: ${filePath}`,
-		);
-	}
-
-	if (!fileName) {
-		throw new Error(
-			"Drive upload requires a file name.",
-		);
-	}
-
-	if (!folderId) {
-		throw new Error(
-			"Drive upload requires a destination folder ID.",
-		);
-	}
-
-	const stats =
-		fs.statSync(filePath);
-
+	const stats = await fsPromises.stat(filePath);
 	if (!stats.isFile()) {
-		throw new Error(
-			`Drive upload source is not a file: ${filePath}`,
-		);
+		throw new Error(`Drive upload source is not a file: ${filePath}`);
 	}
 
-	const drive = getDrive();
-
-	console.log(
-		`----------------------------------------------`,
-	);
-
-	console.log(
-		`Uploading "${fileName}" to Google Drive`,
-	);
-
-	console.log(
-		`Local file: ${filePath}`,
-	);
-
-	console.log(
-		`File size: ${stats.size} bytes`,
-	);
-
-	console.log(
-		`Destination folder: ${folderId}`,
-	);
-
-	const response =
-		await drive.files.create({
-			requestBody: {
-				name: fileName,
-				parents: [folderId],
-			},
-
-			media: {
-				mimeType,
-				body: fs.createReadStream(
-					filePath,
-				),
-			},
-
-			fields:
-				"id,name,mimeType,size,createdTime,modifiedTime,webViewLink,parents",
-		});
-
-	if (!response.data?.id) {
-		throw new Error(
-			"Google Drive returned no file ID after upload.",
-		);
-	}
-
-	console.log(
-		`Google Drive upload successful: ${response.data.name} (${response.data.id})`,
-	);
-
-	console.log(
-		`Google Drive parent folder: ${
-			response.data.parents?.[0] ||
-			folderId
-		}`,
-	);
-
-	console.log(
-		`Google Drive web view: ${
-			response.data.webViewLink ||
-			"not available"
-		}`,
-	);
-
-	console.log(
-		`----------------------------------------------`,
-	);
-
-	return response.data;
-};
-
-export const getFile = async (
-	fileId,
-) => {
-	if (!fileId) {
-		throw new Error(
-			"Google Drive file ID is required.",
-		);
-	}
-
-	const drive = getDrive();
-
-	const response =
-		await drive.files.get({
-			fileId,
-
-			fields:
-				"id,name,mimeType,size,createdTime,modifiedTime,webViewLink,parents",
-		});
-
-	return response.data;
-};
-
-export const deleteFile = async (
-	fileId,
-) => {
-	if (!fileId) {
-		return true;
-	}
-
-	const drive = getDrive();
-
-	await drive.files.delete({
+	return sendContent({
 		fileId,
+		folderId,
+		fileName,
+		mimeType,
+		body: fs.createReadStream(filePath),
+	});
+}
+
+export function uploadJson({ value, fileName, folderId, fileId = null }) {
+	return sendContent({
+		fileId,
+		folderId,
+		fileName,
+		mimeType: "application/json",
+		body: Readable.from(JSON.stringify(value, null, 2)),
+	});
+}
+
+export async function getFile(fileId) {
+	if (!fileId) throw new Error("Google Drive file ID is required.");
+
+	const response = await getDrive().files.get({
+		fileId,
+		fields: FILE_FIELDS,
 	});
 
-	return true;
-};
+	return response.data;
+}
 
-export const listFiles = async (
-	folderId = DRIVE_FOLDER_ID,
-) => {
+export async function getFileStream(fileId) {
+	if (!fileId) throw new Error("Google Drive file ID is required.");
+
+	const response = await getDrive().files.get(
+		{ fileId, alt: "media" },
+		{ responseType: "stream" },
+	);
+
+	return response.data;
+}
+
+export async function downloadJsonFile(fileId) {
+	const stream = await getFileStream(fileId);
+	const chunks = [];
+
+	for await (const chunk of stream) {
+		chunks.push(Buffer.from(chunk));
+	}
+
+	return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+}
+
+export async function downloadFileToPath(fileId, destinationPath) {
+	const stream = await getFileStream(fileId);
+	await fsPromises.mkdir(path.dirname(destinationPath), { recursive: true });
+
+	try {
+		await pipeline(stream, fs.createWriteStream(destinationPath));
+		return destinationPath;
+	} catch (error) {
+		await fsPromises.unlink(destinationPath).catch(() => {});
+		throw error;
+	}
+}
+
+export async function deleteFile(fileId) {
+	if (!fileId) return true;
+
+	try {
+		await getDrive().files.delete({ fileId });
+		return true;
+	} catch (error) {
+		if (error?.response?.status === 404 || error?.code === 404) return true;
+		throw error;
+	}
+}
+
+export async function listFiles(folderId = DRIVE_FOLDER_ID) {
 	const drive = getDrive();
+	const files = [];
+	let pageToken;
 
-	const response =
-		await drive.files.list({
+	do {
+		const response = await drive.files.list({
 			q: `'${folderId}' in parents and trashed = false`,
-
-			fields:
-				"files(id,name,mimeType,size,createdTime,modifiedTime,webViewLink,parents)",
-
+			fields: `files(${FILE_FIELDS}),nextPageToken`,
 			orderBy: "createdTime desc",
+			pageSize: 100,
+			pageToken,
 		});
 
-	return response.data.files || [];
-};
+		files.push(...(response.data.files || []));
+		pageToken = response.data.nextPageToken || null;
+	} while (pageToken);
+
+	return files;
+}

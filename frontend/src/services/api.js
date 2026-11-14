@@ -60,7 +60,10 @@ async function requestBlob(path) {
 
 	if (!response.ok) {
 		const data = await response.json().catch(() => ({}));
-		throw new Error(data.error || `Request failed (${response.status})`);
+		const error = new Error(data.error || `Request failed (${response.status})`);
+		error.code = data.code;
+		error.status = response.status;
+		throw error;
 	}
 
 	return response.blob();

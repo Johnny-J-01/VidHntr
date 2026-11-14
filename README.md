@@ -784,6 +784,14 @@ This data is used by both the AI discovery system and subtitle pipeline.
 
 FFmpeg performs the actual media transformations required to produce the final video.
 
+### Storage and Retention
+
+Supabase Auth and PostgreSQL remain responsible for identity, ownership, application records, and concurrency-safe upload reservations. Google Drive stores uploaded source videos, metadata and transcript JSON, thumbnails, and exports behind authorized backend endpoints; Supabase Storage is not used for these files. Local disk is temporary processing scratch.
+
+Guests can keep 2 active videos up to 300 MB each for one hour after Drive confirmation. Authenticated users can keep 3 active videos up to 500 MB each for one day. Exports remain available for three minutes after their successful Drive upload. Expiry is enforced during resource access as well as by startup, scheduled, and orphan cleanup.
+
+See the [storage and retention guide](docs/storage-retention.md) for the Drive hierarchy, lifecycle, deletion ordering, migration, and operational details.
+
 ---
 
 ## Tech Stack

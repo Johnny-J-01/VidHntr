@@ -1,6 +1,7 @@
 import path from "path";
 
 import * as store from "../../db/videos.js";
+import { getFileStream } from "../../services/google/drive.js";
 import {
 	getTranscriptOrThrow,
 	getYouTubeVideoId,
@@ -11,7 +12,7 @@ import {
 export const getYouTubeVideo = async (request, response) => {
 	const video = await store.getVideo(request.params.id);
 
-	if (!requireVideoAccess(request, response, video)) return;
+	if (!(await requireVideoAccess(request, response, video))) return;
 
 	if (video.sourceType !== "youtube") {
 		return response
@@ -39,7 +40,7 @@ export const getYouTubeVideo = async (request, response) => {
 export const getVideoStatus = async (request, response) => {
 	const video = await store.getVideo(request.params.id);
 
-	if (!requireVideoAccess(request, response, video)) return;
+	if (!(await requireVideoAccess(request, response, video))) return;
 
 	return response.json({
 		status: video.status,
@@ -51,10 +52,10 @@ export const getVideoStatus = async (request, response) => {
 export const getVideoTranscript = async (request, response) => {
 	const video = await store.getVideo(request.params.id);
 
-	if (!requireVideoAccess(request, response, video)) return;
+	if (!(await requireVideoAccess(request, response, video))) return;
 
 	try {
-		const transcript = getTranscriptOrThrow(video);
+		const transcript = await getTranscriptOrThrow(video);
 
 		return response.json({
 			videoId: video.id,
@@ -70,33 +71,47 @@ export const getVideoTranscript = async (request, response) => {
 export const getVideoFile = async (request, response) => {
 	const video = await store.getVideo(request.params.id);
 
-	if (!requireVideoAccess(request, response, video)) return;
+	if (!(await requireVideoAccess(request, response, video))) return;
 
-	if (!video.filePath) {
+	if (video.filePath) {
+		return response.sendFile(path.resolve(video.filePath));
+	}
+
+	if (!video.driveFileId) {
 		return response.status(404).json({
 			error: "Video file not found.",
 		});
 	}
 
-	return response.sendFile(path.resolve(video.filePath));
+	response.type(path.extname(video.filename || "") || ".mp4");
+	const stream = await getFileStream(video.driveFileId);
+	stream.on("error", (error) => response.destroy(error));
+	return stream.pipe(response);
 };
 
 export const getVideoThumbnail = async (request, response) => {
 	const video = await store.getVideo(request.params.id);
 
-	if (!requireVideoAccess(request, response, video)) return;
+	if (!(await requireVideoAccess(request, response, video))) return;
 
-	if (!video.thumbnailPath) {
+	if (video.thumbnailPath) {
+		return response.sendFile(path.resolve(video.thumbnailPath));
+	}
+
+	if (!video.thumbnailFileId) {
 		return response.status(404).end();
 	}
 
-	return response.sendFile(path.resolve(video.thumbnailPath));
+	response.type("image/jpeg");
+	const stream = await getFileStream(video.thumbnailFileId);
+	stream.on("error", (error) => response.destroy(error));
+	return stream.pipe(response);
 };
 
 export const getVideo = async (request, response) => {
 	const video = await store.getVideo(request.params.id);
 
-	if (!requireVideoAccess(request, response, video)) return;
+	if (!(await requireVideoAccess(request, response, video))) return;
 
 	return response.json(publicVideoForRequest(request, video));
 };

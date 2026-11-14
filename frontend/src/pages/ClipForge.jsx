@@ -20,10 +20,22 @@ import DeleteVideoModal from "../components/sources/DeleteVideoModal.jsx";
 import { Toaster, toast } from "react-hot-toast";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 
-const TERMINAL = new Set(["READY", "ERROR"]);
+const TERMINAL = new Set(["READY", "ERROR", "EXPIRED", "DELETING"]);
+const VIDEO_EXPIRED_MESSAGE = "This video has expired. Please upload it again.";
 const YOUTUBE_INGESTION_DISABLED_CODE = "YOUTUBE_INGESTION_DISABLED";
 const YOUTUBE_INGESTION_DISABLED_MESSAGE =
 	"Direct YouTube processing is unavailable on the hosted version. Download the video and upload it directly instead.";
+
+function unexpiredVideos(list) {
+	if (!Array.isArray(list)) return [];
+	const now = Date.now();
+
+	return list.filter((item) => {
+		if (!item.expiresAt) return true;
+		const expiryMs = new Date(item.expiresAt).getTime();
+		return Number.isNaN(expiryMs) || expiryMs > now;
+	});
+}
 
 export default function ClipForge() {
 	const [videos, setVideos] = useState([]);
@@ -91,18 +103,7 @@ export default function ClipForge() {
 		async function refresh() {
 			try {
 				const list = await api.listVideos();
-				const safeList = Array.isArray(list) ? list : [];
-				const now = Date.now();
-				const validList = safeList.filter((v) => {
-					let expiryMs = null;
-					if (v.expiresAt) {
-						expiryMs = new Date(v.expiresAt).getTime();
-					} else if (v.createdAt) {
-						expiryMs =
-							new Date(v.createdAt).getTime() + 15 * 60 * 1000;
-					}
-					return !expiryMs || isNaN(expiryMs) || expiryMs > now;
-				});
+				const validList = unexpiredVideos(list);
 
 				if (!cancelled) {
 					setVideos(validList);
@@ -138,16 +139,11 @@ export default function ClipForge() {
 			setVideos((prevVideos) => {
 				let expiredSelected = false;
 				const validVideos = prevVideos.filter((v) => {
-					let expiryMs = null;
-					if (v.expiresAt) {
-						expiryMs = new Date(v.expiresAt).getTime();
-					} else if (v.createdAt) {
-						expiryMs =
-							new Date(v.createdAt).getTime() + 15 * 60 * 1000;
-					}
-
+					const expiryMs = v.expiresAt
+						? new Date(v.expiresAt).getTime()
+						: null;
 					const isExpired =
-						expiryMs && !isNaN(expiryMs) && now >= expiryMs;
+						expiryMs && !Number.isNaN(expiryMs) && now >= expiryMs;
 					if (isExpired && v.id === selectedId) {
 						expiredSelected = true;
 					}
@@ -159,7 +155,7 @@ export default function ClipForge() {
 						setTimeout(() => {
 							selectVideo(null);
 							showToast(
-								"The video has expired and was removed.",
+								VIDEO_EXPIRED_MESSAGE,
 								"error",
 							);
 						}, 0);
@@ -194,7 +190,16 @@ export default function ClipForge() {
 				if (!TERMINAL.has(v.status)) {
 					timer = setTimeout(poll, 2000);
 				}
-			} catch (_e) {}
+			} catch (error) {
+				if (cancelled || error.code !== "VIDEO_EXPIRED") return;
+
+				setVideos((current) => current.filter((item) => item.id !== selectedId));
+				setSelectedId(null);
+				setVideo(null);
+				setTranscript([]);
+				setExportOpen(false);
+				showToast(VIDEO_EXPIRED_MESSAGE, "error");
+			}
 		}
 
 		poll();
@@ -506,22 +511,15 @@ export default function ClipForge() {
 		try {
 			const { videoId } = await api.uploadVideo(file, file.name, onProgress);
 			const list = await api.listVideos();
-			const safeList = Array.isArray(list) ? list : [];
-			const now = Date.now();
-			const validList = safeList.filter((v) => {
-				let expiryMs = null;
-				if (v.expiresAt) {
-					expiryMs = new Date(v.expiresAt).getTime();
-				} else if (v.createdAt) {
-					expiryMs = new Date(v.createdAt).getTime() + 15 * 60 * 1000;
-				}
-				return !expiryMs || isNaN(expiryMs) || expiryMs > now;
-			});
+			const validList = unexpiredVideos(list);
+			const uploadedVideo = validList.find((item) => item.id === videoId);
+			const retentionLabel =
+				uploadedVideo?.ownerType === "authenticated" ? "1 day" : "1 hour";
 
 			setVideos(validList);
 			selectVideo(videoId);
 			showToast(
-				"Video upload started. Note: videos expire after 15 minutes.",
+				`Video upload started. Retention is ${retentionLabel} after the source is confirmed in Drive.`,
 			);
 		} catch (error) {
 			showToast(
@@ -540,17 +538,7 @@ export default function ClipForge() {
 		try {
 			const { videoId } = await api.addYouTube(url);
 			const list = await api.listVideos();
-			const safeList = Array.isArray(list) ? list : [];
-			const now = Date.now();
-			const validList = safeList.filter((v) => {
-				let expiryMs = null;
-				if (v.expiresAt) {
-					expiryMs = new Date(v.expiresAt).getTime();
-				} else if (v.createdAt) {
-					expiryMs = new Date(v.createdAt).getTime() + 15 * 60 * 1000;
-				}
-				return !expiryMs || isNaN(expiryMs) || expiryMs > now;
-			});
+			const validList = unexpiredVideos(list);
 
 			setVideos(validList);
 			selectVideo(videoId);

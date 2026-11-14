@@ -18,6 +18,7 @@ import {
 	listFiles,
 } from "../google/drive.js";
 import { deleteTemporaryExportFiles } from "../export/processing.js";
+import { isFileLocked } from "../video/file-locks.js";
 import { DIRS as VIDEO_DIRS } from "../video/processing.js";
 import { VIDEO_EXPIRED_MESSAGE } from "./retention.js";
 
@@ -45,6 +46,11 @@ function deleteLocalFilesByPrefix(directory, prefix) {
 		if (!filename.startsWith(prefix)) continue;
 
 		const filePath = path.join(directory, filename);
+		if (isFileLocked(filePath)) {
+			console.log(`Skipping cleanup of actively locked file: ${filePath}`);
+			continue;
+		}
+
 		try {
 			if (!fs.statSync(filePath).isFile()) continue;
 			fs.unlinkSync(filePath);
@@ -81,6 +87,10 @@ function cleanupStaleIncomingUploads() {
 		if (!filename.endsWith(".uploading")) continue;
 
 		const filePath = path.join(directory, filename);
+		if (isFileLocked(filePath)) {
+			continue;
+		}
+
 		try {
 			const stats = fs.statSync(filePath);
 			if (!stats.isFile() || stats.mtimeMs > cutoff) continue;
@@ -149,6 +159,29 @@ async function cleanupExpiredExports() {
 			cleaned += 1;
 		} catch (error) {
 			console.error(`Failed to clean export ${exportJob.id}:`, error);
+		}
+	}
+
+	return cleaned;
+}
+
+async function cleanupAbandonedExports() {
+	const cutoff = new Date(Date.now() - INCOMPLETE_UPLOAD_TTL_MS).toISOString();
+	const { data: exports, error } = await supabase
+		.from("exports")
+		.select("id, drive_file_id")
+		.in("status", ["QUEUED", "PROCESSING"])
+		.lte("created_at", cutoff);
+
+	if (error) throw error;
+
+	let cleaned = 0;
+	for (const exportJob of exports || []) {
+		try {
+			await deleteExportCompletely(exportJob);
+			cleaned += 1;
+		} catch (error) {
+			console.error(`Failed to clean abandoned export ${exportJob.id}:`, error);
 		}
 	}
 
@@ -272,11 +305,12 @@ export async function cleanupExpiredData() {
 	console.log("Starting storage cleanup...");
 	const deletedIncompleteUploads = cleanupStaleIncomingUploads();
 	const deletedAbandonedUploads = await cleanupAbandonedUploadReservations();
+	const deletedAbandonedExports = await cleanupAbandonedExports();
 	const deletedExports = await cleanupExpiredExports();
 	const deletedVideos = await cleanupExpiredVideos();
 	const deletedOrphans = await cleanupOrphanedDriveFiles();
 
 	console.log(
-		`Cleanup complete: ${deletedIncompleteUploads} incomplete files, ${deletedAbandonedUploads} abandoned uploads, ${deletedExports} exports, ${deletedVideos} videos, ${deletedOrphans} orphaned Drive files deleted.`,
+		`Cleanup complete: ${deletedIncompleteUploads} incomplete files, ${deletedAbandonedUploads} abandoned uploads, ${deletedAbandonedExports} abandoned exports, ${deletedExports} exports, ${deletedVideos} videos, ${deletedOrphans} orphaned Drive files deleted.`,
 	);
 }

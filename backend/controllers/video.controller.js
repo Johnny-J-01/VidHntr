@@ -8,6 +8,7 @@ export {
 export {
 	getVideo,
 	getVideoFile,
+	getVideoPlaybackTicket,
 	getVideoStatus,
 	getVideoThumbnail,
 	getVideoTranscript,

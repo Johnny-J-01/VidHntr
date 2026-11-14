@@ -74,6 +74,17 @@ export const api = {
 	getVideo: (id) => request(`/videos/${id}`),
 	getVideoStatus: (id) => request(`/videos/${id}/status`),
 	getTranscript: (id) => request(`/videos/${id}/transcript`),
+	getVideoPlaybackUrl: async (id) => {
+		try {
+			const res = await request(`/videos/${id}/playback-ticket`);
+			if (res?.playbackUrl) {
+				return `${BASE}${res.playbackUrl.replace(/^\/api/, "")}`;
+			}
+		} catch {
+			// Fallback if ticket endpoint unavailable
+		}
+		return `${BASE}/videos/${id}/file`;
+	},
 	getVideoFile: (id) => requestBlob(`/videos/${id}/file`),
 	getVideoThumbnail: (id) => requestBlob(`/videos/${id}/thumbnail`),
 

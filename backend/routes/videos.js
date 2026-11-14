@@ -5,6 +5,7 @@ import {
 	deleteVideo,
 	getVideo,
 	getVideoFile,
+	getVideoPlaybackTicket,
 	getVideoStatus,
 	getVideoSuggestions,
 	getVideoThumbnail,
@@ -27,6 +28,7 @@ router.delete("/:id", deleteVideo);
 router.get("/:id/youtube", getYouTubeVideo);
 router.get("/:id/status", getVideoStatus);
 router.get("/:id/transcript", getVideoTranscript);
+router.get("/:id/playback-ticket", getVideoPlaybackTicket);
 router.get("/:id/file", getVideoFile);
 router.get("/:id/thumbnail", getVideoThumbnail);
 router.post("/:id/search", searchVideo);

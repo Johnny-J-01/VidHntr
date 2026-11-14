@@ -18,6 +18,27 @@ Object.values(DIRS).forEach((directory) => {
 	});
 });
 
+export function getExportWorkDir(exportId) {
+	if (!exportId) return DIRS.exports;
+	const workDir = path.join(DIRS.exports, exportId);
+	if (!fs.existsSync(workDir)) {
+		fs.mkdirSync(workDir, { recursive: true });
+	}
+	return workDir;
+}
+
+export function deleteExportWorkDir(exportId) {
+	if (!exportId) return;
+	const workDir = path.join(DIRS.exports, exportId);
+	if (fs.existsSync(workDir)) {
+		try {
+			fs.rmSync(workDir, { recursive: true, force: true });
+		} catch (error) {
+			console.error(`Failed to remove export work directory ${workDir}:`, error);
+		}
+	}
+}
+
 export function deleteFile(filePath) {
 	if (!filePath || !fs.existsSync(filePath)) {
 		return;
@@ -32,6 +53,8 @@ export function deleteTemporaryExportFiles(exportId) {
 	if (!exportId || !fs.existsSync(DIRS.exports)) {
 		return 0;
 	}
+
+	deleteExportWorkDir(exportId);
 
 	let deleted = 0;
 

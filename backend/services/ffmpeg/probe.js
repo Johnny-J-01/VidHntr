@@ -12,9 +12,46 @@ export function probeDuration(filePath) {
 	});
 }
 
-export function probeStreams(filePath) {
+export function probeMetadata(filePath) {
 	return new Promise((resolve, reject) => {
 		ffmpeg.ffprobe(filePath, (error, data) => {
+			if (error) {
+				return reject(error);
+			}
+
+			const format = data.format || {};
+			const videoStream = (data.streams || []).find((s) => s.codec_type === "video");
+			const audioStream = (data.streams || []).find((s) => s.codec_type === "audio");
+
+			let frameRate = null;
+			if (videoStream?.avg_frame_rate && videoStream.avg_frame_rate !== "0/0") {
+				const [num, den] = videoStream.avg_frame_rate.split("/").map(Number);
+				if (den && den > 0) {
+					frameRate = Math.round((num / den) * 100) / 100;
+				}
+			}
+
+			resolve({
+				duration: Number(format.duration) || 0,
+				width: videoStream ? Number(videoStream.width) || null : null,
+				height: videoStream ? Number(videoStream.height) || null : null,
+				frameRate,
+				videoCodec: videoStream?.codec_name || null,
+				audioCodec: audioStream?.codec_name || null,
+				bitRate: Number(format.bit_rate) || null,
+				formatName: format.format_name || null,
+			});
+		});
+	});
+}
+
+export function probeStreams(filePath, inputOptions = []) {
+	return new Promise((resolve, reject) => {
+		let cmd = ffmpeg(filePath);
+		if (Array.isArray(inputOptions) && inputOptions.length > 0) {
+			cmd = cmd.inputOptions(inputOptions);
+		}
+		cmd.ffprobe((error, data) => {
 			if (error) {
 				return reject(error);
 			}

@@ -6,6 +6,10 @@ import * as store from "../db/exports.js";
 import jobs, {
 	deleteTemporaryExportFiles,
 } from "../services/export/processing.js";
+import {
+	canAccessExport,
+	requireVideoAccess,
+} from "./video/video-helpers.js";
 
 const QUALITIES = new Set(["low", "medium", "high", "maximum"]);
 const CROP_MODES = new Set(["fill", "fit"]);
@@ -22,14 +26,9 @@ async function requireExportAccess(request, response, exp) {
 		return null;
 	}
 
-	// Only block if a DIFFERENT authenticated user tries to access another user's export.
-	// Direct browser downloads (where auth headers aren't sent) and guest exports pass through safely using the secret UUID.
-	if (request.user) {
-		const ownerUserId = exp.userId || video.userId;
-		if (ownerUserId && ownerUserId !== request.user.id) {
-			response.status(403).json({ error: "You cannot access this export." });
-			return null;
-		}
+	if (!canAccessExport(request, exp, video)) {
+		response.status(403).json({ error: "You cannot access this export." });
+		return null;
 	}
 
 	return video;
@@ -50,16 +49,7 @@ export const createExport = async (request, response) => {
 
 	const video = await videos.getVideo(videoId);
 
-	if (!video) {
-		return response.status(404).json({
-			error: "Video not found.",
-		});
-	}
-
-	// Verify creation rights for authenticated videos
-	if (video.userId && (!request.user || request.user.id !== video.userId)) {
-		return response.status(403).json({ error: "You cannot access this video." });
-	}
+	if (!requireVideoAccess(request, response, video)) return;
 
 	const clipStart = Number(start);
 	const clipEnd = Number(end);
@@ -122,8 +112,8 @@ export const createExport = async (request, response) => {
 	await store.upsertExport({
 		id: exportId,
 		videoId,
-		userId: request.user?.id ?? null,
-		guestId: request.user?.id ? null : request.guestId,
+		userId: video.userId ?? null,
+		guestId: video.guestId ?? null,
 		start: clipStart,
 		end: clipEnd,
 		filenameBase: name || video.title || "clip",
@@ -191,15 +181,7 @@ export const cleanupTemporaryExports = async (request, response) => {
 
 	try {
 		const video = await videos.getVideo(videoId);
-		if (!video) {
-			return response.status(404).json({ error: "Video not found." });
-		}
-
-		if (video.userId && request.user && request.user.id !== video.userId) {
-			return response.status(403).json({
-				error: "You cannot access this video.",
-			});
-		}
+		if (!requireVideoAccess(request, response, video)) return;
 
 		const exports = await store.listExportsByVideoId(videoId);
 

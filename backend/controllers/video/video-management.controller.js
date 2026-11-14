@@ -20,7 +20,6 @@ import {
 	UPLOAD_FORMATS,
 } from "../../services/video/local-upload.js";
 import {
-	canAccessVideo,
 	canDeleteVideo,
 	getYouTubeVideoId,
 	publicVideoForRequest,
@@ -232,11 +231,13 @@ export const uploadVideo = (request, response) => {
 };
 
 export const listVideos = async (request, response) => {
-	const videos = await store.listVideos();
+	const videos = await store.listVideos({
+		userId: request.user?.id ?? null,
+		guestId: request.user ? null : request.guestId,
+	});
+
 	response.json(
-		videos
-			.filter((video) => canAccessVideo(request, video))
-			.map((video) => publicVideoForRequest(request, video)),
+		videos.map((video) => publicVideoForRequest(request, video)),
 	);
 };
 

@@ -72,6 +72,7 @@ export const api = {
 	getVideoStatus: (id) => request(`/videos/${id}/status`),
 	getTranscript: (id) => request(`/videos/${id}/transcript`),
 	getVideoFile: (id) => requestBlob(`/videos/${id}/file`),
+	getVideoThumbnail: (id) => requestBlob(`/videos/${id}/thumbnail`),
 
 	uploadVideo: async (file, title, onProgress) => {
 		const { data: authData } = supabase
@@ -141,7 +142,6 @@ export const api = {
 		request(`/videos/${videoId}/suggestions`, { method: "POST" }),
 
 	videoFileUrl: (id) => `${BASE}/videos/${id}/file`,
-	videoThumbnailUrl: (id) => `${BASE}/videos/${id}/thumbnail`,
 
 	// Exports (Initiate job - returns 202 immediately)
 	createExport: (payload) =>
@@ -153,7 +153,7 @@ export const api = {
 	// Poll this endpoint instead of keeping a single connection open
 	getExportStatus: (id) => request(`/exports/${id}/status`),
 
-	exportDownloadUrl: (id) => `${BASE}/exports/${id}/download`,
+	downloadExport: (id) => requestBlob(`/exports/${id}/download`),
 
 	cleanupTemporaryExports: (videoId) =>
 		request(`/exports/video/${videoId}/temporary`, {
